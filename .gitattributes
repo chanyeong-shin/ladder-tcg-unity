@@ -1,0 +1,19 @@
+# Unity YAML (씬·프리팹·에셋) — 텍스트로 다루고 유니티 전용 머지 도구를 쓴다
+*.unity    text merge=unityyamlmerge eol=lf
+*.prefab   text merge=unityyamlmerge eol=lf
+*.asset    text merge=unityyamlmerge eol=lf
+*.mat      text merge=unityyamlmerge eol=lf
+*.anim     text merge=unityyamlmerge eol=lf
+*.controller text merge=unityyamlmerge eol=lf
+*.meta     text eol=lf
+*.cs       text eol=lf diff=csharp
+*.json     text eol=lf
+*.md       text eol=lf
+
+# 바이너리 (자동 변환 금지)
+*.ttf      binary
+*.otf      binary
+*.png      binary
+*.jpg      binary
+*.psd      binary
+*.unitypackage binary
