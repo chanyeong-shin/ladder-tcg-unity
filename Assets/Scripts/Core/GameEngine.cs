@@ -103,7 +103,8 @@ namespace LadderBattle.Core
         public void StartTurn()
         {
             S.Turn++;
-            if (S.Turn > Rules.MaxTurn) { EndGame(Judge(), $"{Rules.MaxTurn}턴 종료"); return; }
+            // MaxTurn 0 이면 제한이 없다 (본인 10-12)
+            if (Rules.MaxTurn > 0 && S.Turn > Rules.MaxTurn) { EndGame(Judge(), $"{Rules.MaxTurn}턴 종료"); return; }
             if (S.Turn > 1) S.First = GameState.Other(S.First);
 
             foreach (var side in new[] { Side.P, Side.B })

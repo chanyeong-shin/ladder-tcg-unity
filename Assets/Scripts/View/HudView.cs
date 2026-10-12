@@ -49,12 +49,20 @@ namespace LadderBattle.View
             bool 공격 = S.Step == Step.Attack;
             string 누구 = S.First == Side.P ? "SELF" : "ENEMY";
 
+            // 턴 제한이 없으면(MaxTurn 0) 분모를 쓸 수 없다. 턴 수만 적는다
+            bool 제한있다 = Rules.MaxTurn > 0;
+
             if (라운드글 != null)
-                라운드글.text = $"TURN {S.Turn:00} / {Rules.MaxTurn}      ATTACK : {누구}      DECK  ∞";
+                라운드글.text = 제한있다
+                    ? $"TURN {S.Turn:00} / {Rules.MaxTurn}      ATTACK : {누구}      DECK  ∞"
+                    : $"TURN {S.Turn:00}      ATTACK : {누구}      DECK  ∞";
 
             if (진행바채움 != null)
             {
-                float t = Mathf.Clamp01(S.Turn / (float)Rules.MaxTurn);
+                // 제한이 없으면 남은 턴을 잴 수 없다. 대신 부순 상대 서버 수(0~3)를 채운다
+                float t = 제한있다
+                    ? Mathf.Clamp01(S.Turn / (float)Rules.MaxTurn)
+                    : Mathf.Clamp01((Rules.Servers - S.B.AliveServers) / (float)Rules.Servers);
                 진행바채움.sizeDelta = new Vector2(진행바전체너비 * t, 진행바채움.sizeDelta.y);
             }
 

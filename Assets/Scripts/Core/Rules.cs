@@ -17,7 +17,8 @@ namespace LadderBattle.Core
         public const int Goal = 4;      // 패킷이 끝까지 가는 데 걸리는 걸음 수
 
         // ── 수치 ──────────────────────────────────────────────
-        public const int MaxTurn = 10;
+        /// <summary>턴 제한. **0 이면 제한이 없다** — 승부가 날 때까지 간다 (본인 10-12).</summary>
+        public const int MaxTurn = 0;
         public const int EndHp = 1;     // 서버 보안도. 1이라 한 방에 날아간다 (본인 10-11)
         public const int HandMax = 5;   // 손패 상한. 덱이 무한이므로 유일한 제동 장치다
 
