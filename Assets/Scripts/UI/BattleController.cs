@@ -1,0 +1,104 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+namespace Breach.UI {
+ public sealed class BattleController:MonoBehaviour {
+  public RectTransform stage,hand,fx,paths,rungs;public GameObject title,loading,game,result,logPanel;
+  public GameObject[] backgrounds;public CardView[] cardPrefabs;public GameObject backPrefab;
+  public ServerView[] servers;public Button endButton,undoButton,logButton,startButton,retryButton;
+  public Button[] laneTargets,rungTargets;public TMP_Text roundLabel,statusLabel,secretLabel,resultLabel,logText;
+  public TMP_FontAsset font;public float animationSpeed=1;
+  public Battle State {get;private set;}public bool CanInput {get{return State!=null&&State.Winner==-1&&State.Actor==0&&State.Phase<2&&!busy&&game.activeSelf;}}
+  bool busy,dragging;int selected=-1,hover=-1,actionLogStart;CardView dragged;
+  readonly List<CardView> cards=new List<CardView>();readonly List<string> log=new List<string>();
+  int[,] publicPower=new int[2,3];int[] publicRungs={-1,-1,-1};int[] publicOwners={-1,-1,-1};int publicSecrets,publicHandCount;readonly List<string> deferredLog=new List<string>();
+  public static readonly float[] LaneX={702,982,1262};public static readonly float[] RowY={364,497,630};
+  void Start(){startButton.onClick.AddListener(()=>StartCoroutine(Begin()));retryButton.onClick.AddListener(()=>StartCoroutine(Begin()));endButton.onClick.AddListener(EndTurn);undoButton.onClick.AddListener(Undo);logButton.onClick.AddListener(()=>logPanel.SetActive(!logPanel.activeSelf));
+   for(int i=0;i<laneTargets.Length;i++){int t=i;laneTargets[i].onClick.AddListener(()=>Use(t,false));}for(int i=0;i<rungTargets.Length;i++){int t=i;rungTargets[i].onClick.AddListener(()=>Use(t,true));}
+   title.SetActive(true);loading.SetActive(false);game.SetActive(false);result.SetActive(false);logPanel.SetActive(false);
+  }
+  void Update(){if(title.activeSelf&&Input.GetKeyDown(KeyCode.Return)){startButton.onClick.Invoke();return;}if(Input.GetKeyDown(KeyCode.Escape)&&CanInput){selected=-1;ClearPreview();LayoutHand(-1);RefreshTargets();}if(Input.GetKeyDown(KeyCode.Return)&&CanInput)EndTurn();}
+  IEnumerator Begin(){StopAllEffects();title.SetActive(false);result.SetActive(false);game.SetActive(false);loading.SetActive(true);yield return Wait(.7f);State=new Battle((uint)Environment.TickCount);log.Clear();selected=-1;busy=false;logPanel.SetActive(false);CapturePublic();loading.SetActive(false);game.SetActive(true);Note("접속 완료 · "+(State.Attacker==0?"내":"상대")+" 공격 턴");actionLogStart=log.Count;Render();yield return BotFlow();}
+  void CapturePublic(){publicPower=(int[,])State.Power.Clone();publicRungs=(int[])State.Rungs.Clone();publicOwners=(int[])State.RungOwners.Clone();publicSecrets=State.Hidden.Count(s=>s.Owner==1);publicHandCount=State.Hands[1].Count;}
+  bool HideEnemyActions {get{return State.Actor==1&&State.Phase<2;}}
+  public void Render(){if(State==null)return;int phase=State.Phase==2?2:State.Actor==0?0:1;for(int i=0;i<3;i++)backgrounds[i].SetActive(i==phase);
+   foreach(var s in servers)s.Render(State.Health[s.owner,s.channel],s.owner==1&&HideEnemyActions?publicPower[1,s.channel]:State.Power[s.owner,s.channel]);
+   foreach(var root in backgrounds){
+    Color accent=phase==0?Ui.Cyan:phase==1?Ui.Red:Ui.Gold;
+    for(int step=0;step<3;step++){var block=Find(root.transform,"단계 "+step);if(!block)continue;foreach(var graphic in block.GetComponentsInChildren<Graphic>(true)){bool active=step==State.Phase;graphic.color=graphic is TMP_Text?(active?accent:new Color(.35f,.45f,.5f)):(graphic.gameObject==block.gameObject?(active?new Color(accent.r*.12f,accent.g*.12f,accent.b*.12f,1):new Color(.035f,.055f,.07f,1)):(active?accent:new Color(.14f,.22f,.26f,1)));}}
+    for(int owner=0;owner<2;owner++)for(int lane=0;lane<3;lane++){var meter=Find(root.transform,"Source_64_"+((owner==0?478:489)+lane*3));if(meter){var graphic=meter.GetComponent<Graphic>();if(graphic)graphic.color=State.Health[owner,lane]>0?(owner==0?Ui.Cyan:Ui.Red):new Color(.16f,.18f,.2f);}}
+    foreach(var t in root.GetComponentsInChildren<TMP_Text>(true)){
+    if(t.gameObject.name=="Source_64_476")t.text=State.Alive(0)+" / 3";
+    if(t.gameObject.name=="Source_64_487")t.text=State.Alive(1)+" / 3";
+    if(t.gameObject.name=="Source_64_372")t.text="ENEMY HAND   "+(HideEnemyActions?publicHandCount:State.Hands[1].Count).ToString("00");
+    if(t.gameObject.name=="Source_64_435")t.text=busy?"신호 전송 / TRANSFER":"빈 소켓 / READY";
+    if(t.gameObject.name=="단계와 행동 담당"){if(t.text.StartsWith("01"))t.text="01 공격 턴 / ATTACK - "+(State.Attacker==0?"나":"상대");else if(t.text.StartsWith("02"))t.text="02 방어 턴 / DEFEND - "+(State.Attacker==0?"상대":"나");}
+   }for(int i=0;i<5;i++){var n=Find(root.transform,"Enemy_Back_"+(374+i));if(n)n.gameObject.SetActive(i<(HideEnemyActions?publicHandCount:State.Hands[1].Count));var holder=Find(root.transform,"Source_64_"+(374+i));if(holder)holder.gameObject.SetActive(i<(HideEnemyActions?publicHandCount:State.Hands[1].Count));}}
+   roundLabel.text="ROUND "+State.Round.ToString("00");statusLabel.text=State.Phase==2?"동시 발동 · 패킷 해결 중":State.Actor==0?"내 "+(State.Phase==0?"공격":"방어")+" 턴 · 카드를 끌어 놓거나 선택 후 대상을 누르세요":"상대 "+(State.Phase==0?"공격":"방어")+" 턴 · 대응 준비 중";
+   secretLabel.text="보안 카드 / ENCRYPTED    나 "+State.Hidden.Count(s=>s.Owner==0)+"  ·  상대 "+(HideEnemyActions?publicSecrets:State.Hidden.Count(s=>s.Owner==1));
+   RefreshBoard();BuildHand();RefreshTargets();
+  }
+  public static Transform Find(Transform root,string name){foreach(Transform t in root){if(t.name==name)return t;var n=Find(t,name);if(n)return n;}return null;}
+  void Clear(Transform root){for(int i=root.childCount-1;i>=0;i--){var g=root.GetChild(i).gameObject;g.SetActive(false);Destroy(g);}}
+  void RefreshBoard(){Clear(rungs);var rows=HideEnemyActions?publicRungs:State.Rungs;var owners=HideEnemyActions?publicOwners:State.RungOwners;
+   for(int row=0;row<3;row++){if(rows[row]>=0){int c=rows[row];Ui.Line("회선 "+(row+1),rungs,new Vector2(LaneX[c],RowY[row]),new Vector2(LaneX[c+1],RowY[row]),owners[row]==0?Ui.Cyan:Ui.Red,4);}else for(int edge=0;edge<2;edge++)for(int k=0;k<9;k++)Ui.Line("빈 배치 자리",rungs,new Vector2(LaneX[edge]+20+k*27,RowY[row]),new Vector2(LaneX[edge]+30+k*27,RowY[row]),new Color(.15f,.26f,.3f,.6f),1);}
+   for(int lane=0;lane<3;lane++)if(State.Walls[lane]){Ui.Box("방화벽",rungs,LaneX[lane]-28,330,56,330,new Color(1,.6f,.1f,.15f));Ui.Text("차단",rungs,LaneX[lane]-42,480,84,30,"BLOCKED",font,15,Ui.Gold);}
+  }
+  void BuildHand(){if(dragging)return;Clear(hand);cards.Clear();for(int i=0;i<State.Hands[0].Count;i++){var view=Instantiate(cardPrefabs[(int)State.Hands[0][i]],hand);view.gameObject.SetActive(true);view.controller=this;view.index=i;cards.Add(view);}LayoutHand(-1);}
+  public void Hover(int index){if(!CanInput||dragging||selected>=0)return;LayoutHand(index);}
+  public void LayoutHand(int index){hover=index;float total=cards.Count*126+(cards.Count-1)*12+(index>=0?75.6f:0);float x=982-total/2;for(int i=0;i<cards.Count;i++){var r=(RectTransform)cards[i].transform;float scale=i==index?1.6f:1;r.localScale=Vector3.one*scale;r.anchoredPosition=new Vector2(x,-(1064-201.6f*scale));x+=126*scale+12;}if(index>=0&&index<cards.Count)cards[index].transform.SetAsLastSibling();}
+  public void Select(int index){if(!CanInput||index<0||index>=cards.Count)return;selected=selected==index?-1:index;LayoutHand(selected);RefreshTargets();}
+  public void BeginDrag(CardView v){if(!CanInput)return;selected=v.index;dragging=true;dragged=v;v.transform.SetParent(stage,false);v.transform.SetAsLastSibling();v.transform.localScale=Vector3.one*1.6f;var g=v.gameObject.AddComponent<CanvasGroup>();g.blocksRaycasts=false;RefreshTargets();}
+  public void Drop(Vector2 screen){if(!dragging)return;Vector2 p;RectTransformUtility.ScreenPointToLocalPointInRectangle(stage,screen,null,out p);p.y=-p.y;dragging=false;var v=dragged;dragged=null;if(v){v.gameObject.SetActive(false);Destroy(v.gameObject);}int index=selected;int target=-1;bool rung=false;
+   if(CanInput&&index>=0&&index<State.Hands[0].Count){Card c=State.Hands[0][index];if(c==Card.Reroute){rung=true;for(int t=0;t<6;t++)if(new Rect(LaneX[t%2]+10,RowY[t/2]-42,260,84).Contains(p)){target=t;break;}}
+    else if(c==Card.Buffer||c==Card.Overflow){if(new Rect(582,129,800,716).Contains(p)||new Rect(173,347,332,322).Contains(p))target=0;}
+    else if(new Rect(582,129,800,716).Contains(p))target=Enumerable.Range(0,3).OrderBy(i=>Mathf.Abs(p.x-LaneX[i])).First();}
+   if(target>=0&&State.CanPlay(0,index,target)){Use(target,rung);return;}selected=-1;Render();statusLabel.text="배치 취소 · 손패로 돌아왔습니다.";}
+  public void RefreshTargets(){bool input=CanInput;endButton.interactable=input;undoButton.interactable=input;
+   for(int i=0;i<laneTargets.Length;i++){bool active=input&&selected>=0&&selected<State.Hands[0].Count&&State.Hands[0][selected]!=Card.Reroute;laneTargets[i].interactable=active&&State.CanPlay(0,selected,i);laneTargets[i].targetGraphic.color=active?(laneTargets[i].interactable?new Color(.2f,.9f,1,.07f):new Color(1,.2f,.2f,.06f)):Color.clear;}
+   for(int i=0;i<rungTargets.Length;i++){bool active=input&&selected>=0&&selected<State.Hands[0].Count&&State.Hands[0][selected]==Card.Reroute;rungTargets[i].gameObject.SetActive(active);rungTargets[i].interactable=active&&State.CanPlay(0,selected,i);rungTargets[i].targetGraphic.color=rungTargets[i].interactable?new Color(1,.8f,.2f,.12f):new Color(1,.1f,.2f,.06f);}
+  }
+  public void Preview(int target,bool rung){if(State==null||busy)return;ClearPreview();if(rung){if(selected>=0&&State.CanPlay(0,selected,target))Ui.Line("배치 미리보기",paths,new Vector2(LaneX[target%2],RowY[target/2]),new Vector2(LaneX[target%2+1],RowY[target/2]),Ui.Gold,5);return;}
+   var p=State.Route(0,target);var points=Points(p);for(int i=1;i<points.Count;i++)Ui.Line("공개 경로",paths,points[i-1],points[i],new Color(1,.8f,.2f,.65f),3);
+   if(CanInput)statusLabel.text="CH "+(target+1)+" → 상대 CH "+(p.End+1)+" · 공개된 경로 기준";
+  }
+  public void ClearPreview(){Clear(paths);}
+  public void PreviewServer(int owner,int channel){if(State==null||busy)return;int amount=owner==1&&HideEnemyActions?publicPower[owner,channel]:State.Power[owner,channel];if(amount<=0)return;ClearPreview();var packet=State.Route(owner,channel);var points=Points(packet);for(int i=1;i<points.Count;i++)Ui.Line("장전 패킷 경로",paths,points[i-1],points[i],Ui.Gold,3);}
+  public void Use(int target,bool rung){if(!CanInput||selected<0||selected>=State.Hands[0].Count)return;if((State.Hands[0][selected]==Card.Reroute)!=rung)return;if(!State.CanPlay(0,selected,target)){statusLabel.text="이 위치에는 사용할 수 없습니다.";return;}int i=selected;selected=-1;ClearPreview();StartCoroutine(Play(0,i,target));}
+  IEnumerator Play(int owner,int index,int target){Card card=State.Hands[owner][index];if(!State.Play(owner,index,target))yield break;busy=true;Render();
+   if(owner==1&&State.Phase==1){deferredLog.Add("상대 · "+(Cards.Enhanced(card)?"보안 카드 배치":Cards.Names[(int)card]));yield return Wait(.15f);}
+   else {yield return Transfer(card,owner);if(owner==1)deferredLog.Add("상대 · "+(Cards.Enhanced(card)?"보안 카드 배치":Cards.Names[(int)card]));else Note("나 · "+Cards.Names[(int)card]);}busy=false;Render();}
+  public void EndTurn(){if(CanInput){selected=-1;ClearPreview();StartCoroutine(Advance());}}
+  IEnumerator Advance(){busy=true;State.EndAction();CapturePublic();Render();if(State.Phase==2)yield return ResolveRound();busy=false;actionLogStart=log.Count;Render();yield return BotFlow();}
+  IEnumerator BotFlow(){if(State==null||State.Actor!=1||State.Winner!=-1||State.Phase>=2)yield break;busy=true;Render();yield return Wait(.55f);
+   int guard=0,index,target;while(State.ChooseBot(out index,out target)&&guard++<40){yield return Play(1,index,target);busy=true;RefreshTargets();yield return Wait(.2f);}
+   State.EndAction();CapturePublic();foreach(string entry in deferredLog)Note(entry);deferredLog.Clear();if(State.Phase==2)yield return ResolveRound();busy=false;actionLogStart=log.Count;Render();if(State.Actor==1&&State.Winner==-1)yield return BotFlow();}
+  IEnumerator ResolveRound(){busy=true;State.Phase=2;Render();yield return Wait(.35f);var report=State.Resolve();CapturePublic();RefreshBoard();foreach(var s in report.Revealed){Note((s.Owner==0?"나":"상대")+" · "+Cards.Names[(int)s.Card]+" 공개");yield return Reveal(s);}yield return Flight(report);foreach(string e in report.Events)Note(e);Render();yield return Wait(.5f);if(State.Winner!=-1){resultLabel.text=State.Winner==0?"침투 성공 / ACCESS GRANTED":State.Winner==1?"서버 소실 / CONNECTION LOST":"동시 전멸 / DRAW";result.SetActive(true);yield break;}State.NextRound();CapturePublic();Note("ROUND "+State.Round+" · "+(State.Attacker==0?"내":"상대")+" 공격 턴");}
+  void Undo(){if(!CanInput)return;State.Undo();if(log.Count>actionLogStart)log.RemoveRange(actionLogStart,log.Count-actionLogStart);selected=-1;ClearPreview();CapturePublic();Render();Note("이번 행동을 시작 상태로 복원했습니다.");}
+  void Note(string message){log.Add(message);if(log.Count>200){log.RemoveAt(0);actionLogStart=Mathf.Max(0,actionLogStart-1);}logText.text=string.Join("\n",log.Skip(Math.Max(0,log.Count-16)));}
+  WaitForSeconds Wait(float seconds){return new WaitForSeconds(seconds/Mathf.Max(.1f,animationSpeed));}
+  void StopAllEffects(){Clear(fx);Clear(paths);}
+  IEnumerator Transfer(Card card,int owner){Color color=owner==0?Ui.Cyan:Ui.Red;GameObject chip;
+   if(owner==1||Cards.Enhanced(card))chip=Instantiate(backPrefab,fx);else chip=Instantiate(cardPrefabs[(int)card].gameObject,fx);chip.SetActive(true);var rt=(RectTransform)chip.transform;rt.anchoredPosition=new Vector2(244,-388);rt.localScale=Vector3.one*(owner==1||Cards.Enhanced(card)?1.5f:1.2f);yield return Wait(.25f);
+   var fade=chip.AddComponent<CanvasGroup>();for(float t=0;t<1;t+=Time.deltaTime*2.5f*animationSpeed){fade.alpha=1-t;yield return null;}Destroy(chip);
+   Vector2[][] routes={new[]{new Vector2(448,480),new Vector2(532,480),new Vector2(548,480),new Vector2(548,385),new Vector2(582,385)},new[]{new Vector2(448,498),new Vector2(532,498),new Vector2(560,498),new Vector2(560,423),new Vector2(582,423)},new[]{new Vector2(448,516),new Vector2(532,516),new Vector2(550,516),new Vector2(550,561),new Vector2(582,561)}};
+   var traces=new List<Shape>();for(int lane=0;lane<3;lane++)for(int seg=1;seg<routes[lane].Length;seg++)traces.Add(Ui.Line("활성 회로",fx,routes[lane][seg-1],routes[lane][seg],new Color(color.r,color.g,color.b,.35f),lane==1?6:2));
+   var pieces=new List<RectTransform>();foreach(var route in routes){var piece=Ui.Box("전송 신호",fx,route[0].x,route[0].y,10,3,color);pieces.Add(piece.rectTransform);}
+   for(float t=0;t<1;t+=Time.deltaTime*1.6f*animationSpeed){for(int i=0;i<3;i++){Vector2 p=Along(routes[i],t);pieces[i].anchoredPosition=new Vector2(p.x,-p.y);}yield return null;}foreach(var p in pieces)Destroy(p.gameObject);foreach(var trace in traces)Destroy(trace.gameObject);
+   // Light grows from the three arrival points along the left board boundary.
+   var streaks=new List<Shape>();float[] arrivals={385,423,561};foreach(float y in arrivals)streaks.Add(Ui.Box("판 흡수",fx,581,y,3,1,color));for(float t=0;t<1;t+=Time.deltaTime*2.7f*animationSpeed){for(int i=0;i<3;i++){var r=streaks[i].rectTransform;float top=Mathf.Lerp(arrivals[i],129,t),bottom=Mathf.Lerp(arrivals[i],845,t);r.anchoredPosition=new Vector2(581,-top);r.sizeDelta=new Vector2(3,bottom-top);streaks[i].color=new Color(color.r,color.g,color.b,1-t*.65f);}yield return null;}foreach(var s in streaks)Destroy(s.gameObject);
+  }
+  IEnumerator Reveal(Secret secret){var view=Instantiate(cardPrefabs[(int)secret.Card],fx);view.controller=null;view.gameObject.SetActive(true);var rt=(RectTransform)view.transform;rt.anchoredPosition=new Vector2(237,-380);rt.localScale=Vector3.one*1.5f;yield return Wait(.45f);Destroy(view.gameObject);}
+  public static List<Vector2> Points(Packet p){var points=new List<Vector2>();foreach(var c in p.Cells)points.Add(new Vector2(LaneX[c.Lane],c.Row<0?201:c.Row>2?777:RowY[c.Row]));return points;}
+  static Vector2 Along(IList<Vector2> points,float t){float total=0;for(int i=1;i<points.Count;i++)total+=Vector2.Distance(points[i-1],points[i]);float d=t*total;for(int i=1;i<points.Count;i++){float length=Vector2.Distance(points[i-1],points[i]);if(d<=length)return Vector2.Lerp(points[i-1],points[i],length==0?0:d/length);d-=length;}return points[points.Count-1];}
+  IEnumerator Flight(Resolution report){var shots=new List<RectTransform>();foreach(var p in report.Packets){var pt=Points(p)[0];var shell=Ui.Box("패킷 CH "+(p.Start+1),fx,pt.x-18,pt.y-18,36,36,new Color(.04f,.06f,.09f));Ui.Box("패킷 테두리",shell.transform,0,0,36,36,p.Pierce?Ui.Gold:p.Owner==0?Ui.Cyan:Ui.Red,false,2);var txt=Ui.Text("패킷 안 위력",shell.transform,0,0,36,36,p.Initial.ToString(),font,22,Color.white);txt.alignment=TextAlignmentOptions.Center;shots.Add(shell.rectTransform);}
+   for(float t=0;t<1;t+=Time.deltaTime*.65f*animationSpeed){for(int i=0;i<shots.Count;i++){var packet=report.Packets[i];if((packet.Blocked&&t>.3f)||(packet.Power==0&&t>.55f)){shots[i].gameObject.SetActive(false);continue;}Vector2 p=Along(Points(packet),t);shots[i].anchoredPosition=new Vector2(p.x-18,-p.y+18);if(t>.55f)shots[i].GetComponentInChildren<TMP_Text>().text=packet.Power.ToString();}yield return null;}foreach(var r in shots)Destroy(r.gameObject);
+   foreach(var s in servers)if(report.Before[s.owner,s.channel]>0&&State.Health[s.owner,s.channel]==0){var t=(RectTransform)s.transform;Ui.Box("서버 파괴 잔광",fx,t.anchoredPosition.x+17,-t.anchoredPosition.y+22,66,66,new Color(1,.3f,.3f,.4f),false,4,6);}yield return Wait(.2f);Clear(fx);
+  }
+ }
+}

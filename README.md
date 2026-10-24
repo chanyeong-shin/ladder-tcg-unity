@@ -1,170 +1,66 @@
-# 사다리 전투 TCG — 유니티
+# 침투 프로토콜 · BREACH PROTOCOL
 
-규칙 v1.0 · Unity 6000.3.22f1 · 1920x1080
-
----
-
-## 여는 법
-
-Unity Hub → **Add project from disk** → 이 `unity` 폴더 → `Assets/Scenes/Game.unity` → **Play**.
-
-시작 화면이 뜨고 `EXEC >> 접속` 을 누르면 판이 시작된다.
-
-**카드는 끌어서 낸다** (기획서 10.1). 손패 카드를 누른 채 끌면 커지면서 떠오르고,
-판 테두리 전체가 빛나며 놓을 수 있는 자리만 한 단계 더 밝아진다.
-판 안에서 손을 떼면 배치되고, **판 밖에서 떼면 손패로 돌아간다** (취소).
-`행동 종료` 를 누르면 차례가 넘어간다.
-
-낸 카드는 왼쪽 `CARD LOG` 소켓에 칩처럼 꽂혔다가, 기판 회로를 타고 판 테두리로
-빨려 들어간다. 봇이 낸 것도 같은 일이 빨강으로 일어난다.
-
----
-
-## 무엇이 어디에 있나
-
-```
-Assets/
-  Scenes/Game.unity        화면 전체. 23,000줄짜리 실제 오브젝트다
-  Prefabs/                 실행 중에 개수가 바뀌는 것만 프리팹으로 둔다
-    카드.prefab              손패 카드 한 장
-    가로줄.prefab            연결 회선 한 줄
-    봇카드뒷면.prefab         봇 손패 뒷면
-  Scripts/
-    Core/                  규칙. 유니티를 하나도 쓰지 않는 순수 C#
-      Rules.cs               고정값과 카드 6종
-      GameState.cs           판의 상태
-      GameEngine.cs          규칙 그 자체. 턴 흐름은 EndAction 한곳에서만 바뀐다
-      Bot.cs                 봇. 카드만 내고 차례는 건드리지 않는다
-    View/                  화면. 전부 MonoBehaviour 다
-      GameDirector.cs        엔진과 화면을 잇는다. 씬의 GameDirector 에 붙어 있다
-      BoardView.cs           사다리판 — 서버 6개, 가로줄, 누를 자리
-      ServerView.cs          서버 하나 (육각형 · 보안도 · OFFLINE · 패킷)
-      RungView.cs            가로줄 하나
-      HandView.cs            손패 — 카드를 만들어 늘어놓는다. 적 배치 예고도 여기서
-      CardView.cs            카드 한 장. 끌어서 내는 길이 여기 있다
-      HudView.cs             윗줄 · SEQUENCE · INTEL · 버튼
-      SocketView.cs          CARD LOG 의 CPU 소켓과 기판 회로 (칩이 꽂혔다 빨려 들어간다)
-      BoardFxView.cs         판 연출 — 턴 색 · 빛줄기 · 섬광 · 피해 숫자 · 폭발 · 흔들림
-      TransitionView.cs      턴 전환 명판 (가림막 · 코드 레인 · 명판)
-      DecorView.cs           장식 — 이진수 뒤집힘 · 바코드 흔들림 · 타자 효과
-      ScreenFlow.cs          시작 화면 → 플레이 → 종료 화면
-      Palette.cs             시안의 색 (소켓 잔색 · 턴별 판 색 포함)
-      AutoPlay.cs            검사용. 사람 없이 한 판을 끌어서 돌려 본다
-    Editor/                에디터에서만 도는 도구. 빌드에는 안 들어간다
-      FigmaImport.cs         피그마 배치표를 게임오브젝트로 세운다
-      WireGame.cs            세운 화면을 컴포넌트에 물리고 프리팹을 뽑는다
-      BuildScreen.cs         Tools 메뉴
-      UiSprites.cs           육각형 · 원 · 테두리 · 번짐을 코드로 그린다
-      FontAssets.cs          TMP 폰트 에셋을 만든다
-      Screenshot.cs          창 없이 화면을 찍는다
-      Probe.cs               한 점 위에 무엇이 겹쳐 있는지 알려 준다
-      PlayTest.cs            창 없이 Play 를 눌러 한 판을 돌린다
-  Figma/배치표/             피그마에서 받아 온 좌표표 7개
-  Fonts/                   Inter · Rajdhani · 본고딕 (전부 OFL)
-  Art/Generated/           UiSprites 가 만든 그림. 지워도 다시 만들어진다
-  TextMesh Pro/            TMP 필수 리소스
-```
-
----
-
-## 화면은 피그마에서 가져온다
-
-`Assets/Scenes/Game.unity` 는 **손으로 만들지 않았다.** 피그마 시안의 좌표·색·글자를
-그대로 받아 와 게임오브젝트로 세운 것이다. 그래서 시안과 어긋날 수가 없다.
-
-```
-피그마  ──(1)──▶  _검증/figma_raw/*.json   원본 덤프
-        ──(2)──▶  Assets/Figma/배치표/*.json   유니티가 읽는 납작한 표
-        ──(3)──▶  Game.unity                실제 게임오브젝트 172개
-```
-
-1. `node _검증/figma_dump.js json _검증/figma_raw 17:170`
-2. `python _검증/figma_to_unity.py _검증/figma_raw/17_170.json Assets/Figma/배치표/17_170.layout.json`
-3. 유니티에서 **Tools > 사다리전투 > 화면 만들기**
-
-전환 명판은 전환 화면 시안(`13_44`)에서 **오버레이 묶음(`13:204`)만** 가져온다.
-전환 화면 시안은 플레이 화면을 통째로 품고 있어서, 그대로 세우면 같은 화면이 두 겹이 된다.
-
-> **3번을 누르면 씬이 처음부터 다시 만들어진다.** 손으로 고쳐 둔 것은 사라진다.
-> 시안이 바뀌었을 때만 누르고, 평소에는 Inspector 에서 고친다.
-
-시안과 얼마나 같은지는 숫자로 잰다.
-
-```
-Unity.exe -quit -batchmode -projectPath . \
-  -executeMethod LadderBattle.EditorTools.BuildScreen.CLI_Mock -shotPath 시안만.png
-python _검증/화면대조.py 시안.png 시안만.png 결과폴더
-```
-
-**2026-10-12 기준 평균 차이 2.21 / 255.** 남은 차이는 거의 한글 글꼴이다 —
-시안은 Inter 를 쓰는데 Inter 에 한글이 없어 피그마가 윈도우 글꼴로 대신 그렸고,
-유니티는 본고딕으로 그린다. 글자 모양이 다르니 이 차이는 더 줄일 수 없다.
-
----
-
-## 명령줄에서 돌리기
-
-유니티 허브에 로그인돼 있으면 창 없이 다 된다.
-
-| 할 일 | 명령 |
+| 항목 | 내용 |
 |---|---|
-| 화면 다시 세우기 | `-quit -batchmode -executeMethod LadderBattle.EditorTools.BuildScreen.CLI_Build` |
-| 시안만 세워 사진 | `-quit -batchmode -executeMethod ...BuildScreen.CLI_Mock -shotPath <경로>` |
-| 지금 씬 사진 | `-quit -batchmode -executeMethod ...Screenshot.CLI_Shot -shotPath <경로>` |
-| 한 점 위에 뭐가 있나 | `-quit -batchmode -executeMethod ...Probe.CLI_Probe -probe 960,200` |
-| **한 판 돌려 보기** | `-batchmode -executeMethod ...PlayTest.CLI_Play` |
-| 연출 끄고 숫자만 | 위에 `-noFx` 를 더한다 |
-| 옛 누르기 길로 | 위에 `-byClick` 를 더한다 |
+| 갱신 | 2026-10-25 재구현 |
+| 환경 | Unity 6000.3.22f1 · UGUI · Windows · 싱글플레이 봇 대전 |
+| 규칙 | 상위 사다리전투_TCG_기획서.md 1~8절 |
+| 화면 | 2026-10-25 Figma Week08_Proposals 스냅샷 기반 |
+| 이전 구현 | 033e03e 커밋. 현재 브랜치 rebuild/2026-10-25 |
 
-앞에 `"C:/Program Files/Unity/Hub/Editor/6000.3.22f1/Editor/Unity.exe" -projectPath .` 를 붙인다.
+## 1. 플레이
 
-> **한 판 돌려 보기에는 `-quit` 를 붙이면 안 된다.** Play 에 들어가기 전에 닫힌다.
-> 검사가 스스로 닫는다 — 성공 0, 실패 1.
-> `-nographics` 도 붙이면 안 된다. 그리질 못해서 사진이 비어 나온다.
+`Build/BreachProtocol.exe`를 실행한다. 실행 파일만 옮기지 않는다. 같은 폴더의 데이터·DLL·MonoBleedingEdge도 필요하다.
 
-`PlayTest` 는 사람 없이 **카드를 집어 끌어다 놓고** 턴을 넘겨 판이 끝날 때까지 간다.
-연출이 실제로 화면에 떴을 때마다 사진을 남기고, 하나라도 안 떴으면 실패로 끝낸다 —
-숫자만 맞고 연출이 안 돌면 "돌았다"고 보고하는 셈이 되기 때문이다.
-사진과 보고서가 `Logs/자동플레이/` 에 남는다.
+Unity에서는 이 `unity` 폴더를 열고 `Assets/Scenes/Game.unity`에서 Play를 누른다.
 
-> **검사기의 "걸음"은 프레임이 아니다.** 배치모드는 초당 1000프레임 가까이 돈다.
-> 프레임으로 상한을 걸면 연출이 몇 번 돌기도 전에 걸려서 "판이 안 끝났다"가 된다.
-> `최대결정`(낼지 넘길지 정한 횟수)과 `최대시간`(초)으로 센다.
+| 조작 | 결과 |
+|---|---|
+| 침투 개시 또는 Enter | 새 대전 시작 |
+| 손패에 마우스 올리기 | 카드 1.6배 확대, 다른 카드는 간격 유지 |
+| 카드 선택 후 대상 클릭 | 카드 사용 |
+| 카드를 판에 끌어서 놓기 | 카드 사용. 잘못된 위치·판 밖은 손패로 복귀 |
+| 라우팅 변경 | 빈 가로줄 자리에 건설, 기존 줄은 파괴 |
+| 버퍼 적재·버퍼 오버플로 | 카드 선택 후 판 클릭 또는 판/소켓으로 드롭 |
+| 장전된 서버에 마우스 올리기 | 해당 패킷 경로 표시 |
+| 행동 취소 | 자기 행동 시작 시점으로 손패·판·난수 복원 |
+| 행동 종료 또는 Enter | 다음 단계로 진행 |
+| Escape | 카드 선택 해제 |
+| 기록 보기 | 전투 기록 열기·닫기 |
+| 결과 화면 다시 시작 | 새 대전 |
 
----
+카드 6종이 들어 있다. 강화 카드는 동시 발동 때 공개된다. 상대 방어 행동은 해결 전까지 손패 숫자·연출·기록으로 노출하지 않는다. 전멸까지 턴 제한 없이 진행한다.
 
-## 규칙은 유니티 밖에서도 돈다
+## 2. 수정할 곳
 
-`Scripts/Core` 는 `using UnityEngine` 이 한 줄도 없다. 그래서 유니티 없이 수천 판을 돌려
-숫자를 볼 수 있다. 화면을 고치다 규칙이 틀어졌는지 여기서 바로 잡힌다.
+| 파일·폴더 | 역할 |
+|---|---|
+| Assets/Scenes/Game.unity | 실제 Canvas·화면·서버·버튼과 참조 연결 |
+| Assets/Prefabs | 카드 6종·공통 뒷면·양측 서버 원본 |
+| Assets/Scripts/Core/Battle.cs | 규칙·상태·턴·합법성·되돌리기·봇 판단 |
+| Assets/Scripts/UI/BattleController.cs | 입력·화면 갱신·전송/발사 연출 |
+| Assets/Scripts/UI/CardView.cs | 카드 호버·클릭·드래그 이벤트 |
+| Assets/Scripts/UI/ServerView.cs | null·장전·OFFLINE 표시와 경로 호버 |
+| Assets/Scripts/UI/Shape.cs | 테두리·선·육각형 UI 도형 |
+| Assets/Editor/SceneBuilder.cs | 씬·프리팹 생성, Windows 빌드 |
+| Assets/Figma | Figma 좌표·색·텍스트 스냅샷 |
+| Assets/Art/Figma | 복잡한 원본 벡터의 부품별 이미지 |
+| Tests | 규칙 사례 검증 |
 
-```
-cd _검증/csharp && dotnet run -c Release -- 3000
-```
+문구·버튼·회로·서버·카드 구조는 편집할 수 있다. 복잡한 카드·표지 그림 일부는 이미지 부품이다. 전체 화면을 이미지 하나로 대체하지 않았다.
 
-| 2026-10-12 · 3000판 | 실행판 HTML | 유니티 Core (C#) |
-|---|---:|---:|
-| 전멸 결착 | 18.1% | 17.6% |
-| 무승부 | 7.0% | 7.6% |
-| 평균 턴 | 9.10 | 9.13 |
-| 규칙 위반 | **0** | **0** |
+## 3. 빌드와 재생성
 
----
+`Breach > 저장된 씬으로 Windows 빌드`는 현재 저장된 씬을 빌드한다. Inspector에서 수정한 씬·프리팹을 재생성하지 않는다.
 
-## 알아 둘 것
+`Breach > 승인 화면으로 새 씬 생성`은 씬·프리팹을 다시 만든다. 수동 편집을 덮어쓰므로 재생성이 필요할 때만 사용한다. 검증 스크립트의 `SceneBuilder.Rebuild`도 재생성을 포함한다.
 
-- **턴 흐름을 바꾸는 코드는 `GameEngine.EndAction` 한곳뿐이다.** 10-11 에 봇이 스스로
-  차례를 넘기는 바람에 방어 턴이 통째로 사라진 적이 있다. 화면 쪽에서 차례를 직접 넘기지 않는다.
-- **번짐은 형제로 둔다.** 자식으로 두면 칠 위에 덮인다. 조각을 옮길 때 번짐도 같이 옮겨야 한다
-  (안 그러면 옛 자리에 남아 엉뚱한 것을 가린다).
-- **9분할 스프라이트는 가운데를 안 그린다**(`fillCenter = false`). 가운데가 투명해도
-  늘리면 양옆 픽셀이 번져 들어와 틀 안쪽이 테두리 색으로 물든다.
-- **한글 줄바꿈**은 TMP Settings 의 `Use Modern Hangul Line Breaking Rules` 가 켜져 있어야
-  단어 중간에서 안 끊긴다.
-- **`??` 로 유니티 컴포넌트를 받지 않는다.** `GetComponent<T>() ?? AddComponent<T>()` 는
-  없는 컴포넌트를 그냥 통과시킨다 — 유니티의 빈 컴포넌트는 `==` 를 재정의한 가짜 null 이라
-  널 병합 연산자가 못 알아본다. `TryGetComponent` 를 쓴다.
-- **연출은 `GameState.Fx` 만 보고 그린다.** 어느 칸에서 상쇄됐는지는 `Resolve()` 안에서만
-  알 수 있다. 화면 쪽에서 다시 계산하면 규칙이 두 군데로 갈라진다. `Fx` 는 적어 두기만
-  하고 판정에는 쓰지 않으므로 창 없는 검증에서도 숫자가 그대로다.
-- `Assets/Art/Generated` 와 `Library` 는 지워도 된다. 다시 만들어진다.
+## 4. 검증과 한계
+
+규칙 검사: `dotnet run --project Tests/CoreTests.csproj -p:BaseOutputPath=bin3/`.
+
+실행 검증은 상위 `_검증/Unity_재구현/smoke/`에 기록한다. 고정된 한 판의 시작·선택·사용·잘못된 드롭·취소·장전·발동·승리·재시작을 검사한다. 밸런스 시뮬레이션이나 모든 랜덤 조합의 완전 검사는 아니다.
+
+사운드와 튜토리얼은 기획서에서 미정이므로 추가하지 않았다. 연출 속도·강도와 실제 마우스 조작감은 사용자 플레이로 확인한다. 봇의 장기 대전 균형도 이번 검증 범위 밖이다.
+
+화면 비율은 [Unity Canvas Scaler 공식 설명](https://github.com/Unity-Technologies/uGUI/blob/main/com.unity.ugui/Documentation~/script-CanvasScaler.md)의 Expand 방식을 사용해 1920×1080 영역을 유지하고, 비율 차이는 바깥 여백으로 처리한다.

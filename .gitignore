@@ -57,3 +57,8 @@ desktop.ini
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 sysinfo.txt
 *.stackdump
+
+# Standalone rule-test sources are versioned; generated outputs are not.
+!Tests/CoreTests.csproj
+/Tests/bin*/
+/Tests/obj/
