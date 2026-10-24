@@ -28,7 +28,7 @@ namespace Breach.EditorTools {
   }
   static Button Button(string name,Transform parent,float x,float y,float w,float h,string caption,bool visible=true){var rect=Ui.Rect(name,parent,x,y,w,h);var img=rect.gameObject.AddComponent<Image>();img.color=visible?new Color(.08f,.18f,.22f,.95f):Color.clear;var b=rect.gameObject.AddComponent<Button>();b.targetGraphic=img;var colors=b.colors;colors.highlightedColor=new Color(.4f,.9f,1);colors.pressedColor=Ui.Gold;colors.disabledColor=new Color(.22f,.25f,.28f,.45f);b.colors=colors;
    if(!string.IsNullOrEmpty(caption)){var text=Ui.Text("버튼 글자",rect,0,0,w,h,caption,font,20,Color.white);text.alignment=TextAlignmentOptions.Center;}
-   return b;
+   if(visible&&!string.IsNullOrEmpty(caption))rect.gameObject.AddComponent<ButtonFeedback>();return b;
   }
   static void Tint(Transform root){foreach(var g in root.GetComponentsInChildren<Graphic>(true)){var c=g.color;if(c.b>c.r*1.2f&&c.g>c.r*1.2f)g.color=new Color(c.b,c.r*.6f,c.g*.55f,c.a);}}
   static CardView CardPrefab(Card type){string template=type==Card.Reroute?"reroute":type==Card.Firewall?"firewall":type==Card.ZeroDay?"zero":"inject";var root=Import(template,null);root.name="카드 - "+Cards.Names[(int)type];Place(root,0,0,126,201.6f);
@@ -74,10 +74,11 @@ namespace Breach.EditorTools {
    c.secretLabel=Ui.Text("비공개 카드 수",game,582,106,800,20,"",font,13,Ui.Gold);c.secretLabel.alignment=TextAlignmentOptions.Right;
    var panel=Ui.Box("기록 패널",game,1400,380,420,265,new Color(.025f,.04f,.055f,.98f));c.logPanel=panel.gameObject;Ui.Box("기록 테두리",panel.transform,0,0,420,265,new Color(.2f,.4f,.45f),false);c.logText=Ui.Text("기록 본문",panel.transform,16,12,388,244,"",font,12,new Color(.7f,.82f,.86f));
    c.fx=Ui.Rect("연출 오버레이",game,0,0,1920,1080);
-   var cover=Import("cover",stage);cover.name="시작 표지";cover.localScale=Vector3.one*1.5f;Place(cover,0,0,1280,720);c.title=cover.gameObject;var start=BattleController.Find(cover,"Start_Button");c.startButton=start.gameObject.AddComponent<Button>();c.startButton.targetGraphic=start.GetComponent<Graphic>();c.startButton.targetGraphic.raycastTarget=true;
+   var cover=Import("cover",stage);cover.name="시작 표지";cover.localScale=Vector3.one*1.5f;Place(cover,0,0,1280,720);c.title=cover.gameObject;var start=BattleController.Find(cover,"Start_Button");c.startButton=start.gameObject.AddComponent<Button>();c.startButton.targetGraphic=start.GetComponent<Graphic>();c.startButton.targetGraphic.raycastTarget=true;start.gameObject.AddComponent<ButtonFeedback>();
    var load=Import("loading",stage);load.name="접속 로딩";load.localScale=Vector3.one*1.5f;Place(load,0,0,1280,720);c.loading=load.gameObject;Ui.Text("접속 안내",load,260,590,760,45,"서버 연결 중 / ESTABLISHING CONNECTION",font,18,Ui.Cyan);
    var result=Ui.Box("대전 결과",stage,0,0,1920,1080,new Color(.02f,.03f,.045f,.96f));result.raycastTarget=true;c.result=result.gameObject;c.resultLabel=Ui.Text("결과",result.transform,300,410,1320,90,"ACCESS GRANTED",font,42,Ui.Cyan);c.resultLabel.alignment=TextAlignmentOptions.Center;c.retryButton=Button("다시 침투",result.transform,770,550,380,65,"다시 시작 / RECONNECT");
-   manager.AddComponent<SmokeCheck>();c.backgrounds[1].SetActive(false);c.backgrounds[2].SetActive(false);c.title.SetActive(true);c.loading.SetActive(false);c.result.SetActive(false);c.logPanel.SetActive(false);c.game.SetActive(false);
+   c.feedback=manager.AddComponent<CardTransferFx>();c.feedback.layer=c.fx;c.feedback.font=font;c.feedback.cardImages=new Sprite[6];for(int i=0;i<6;i++)c.feedback.cardImages[i]=CardFxBake.Bake(c.cardPrefabs[i].gameObject,"CardFx_"+i);c.feedback.backImage=CardFxBake.Bake(c.backPrefab,"CardFx_Back");
+   manager.AddComponent<FeedbackCheck>();manager.AddComponent<SmokeCheck>();c.backgrounds[1].SetActive(false);c.backgrounds[2].SetActive(false);c.title.SetActive(true);c.loading.SetActive(false);c.result.SetActive(false);c.logPanel.SetActive(false);c.game.SetActive(false);
    EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(),"Assets/Scenes/Game.unity");EditorBuildSettings.scenes=new[]{new EditorBuildSettingsScene("Assets/Scenes/Game.unity",true)};PlayerSettings.productName="Breach Protocol";PlayerSettings.companyName="Breach Team";PlayerSettings.defaultScreenWidth=1600;PlayerSettings.defaultScreenHeight=900;PlayerSettings.fullScreenMode=FullScreenMode.Windowed;AssetDatabase.SaveAssets();Debug.Log("BREACH_SCENE_CREATED: editable UI and prefabs");
   }
   public static void Rebuild(){try{Create();Build();}catch(Exception e){Debug.LogException(e);if(Application.isBatchMode)EditorApplication.Exit(1);}}

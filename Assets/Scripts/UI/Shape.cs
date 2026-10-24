@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 namespace Breach.UI {
  // Editable native geometry for UI borders, server shells and circuit traces.
+ [RequireComponent(typeof(CanvasRenderer))]
  public sealed class Shape:MaskableGraphic {
   public int sides=4;public float thickness=1;public bool filled=true;
   protected override void OnPopulateMesh(VertexHelper vh){vh.Clear();Rect r=rectTransform.rect;int count=sides==4?4:Mathf.Max(6,sides);Vector2[] outer=new Vector2[count];
