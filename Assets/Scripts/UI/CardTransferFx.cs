@@ -34,8 +34,13 @@ namespace Breach.UI {
    for(float t=0;t<1;t+=Delta/.28f){Progress=t;float e=Ease(t);At(rect,Vector2.Lerp(origin,dock.position,e));rect.sizeDelta=Vector2.Lerp(originSize,dock.size,e);yield return null;}
    At(rect,dock.position);rect.sizeDelta=dock.size;
    var clamp=Ui.Box("소켓 고정",root,dock.x-3,dock.y-3,dock.width+6,dock.height+6,color,false,2);
-   Ui.Line("왼쪽 접점",root,new Vector2(Socket.x,dock.center.y),new Vector2(dock.x,dock.center.y),color,2);
-   Ui.Line("오른쪽 접점",root,new Vector2(dock.xMax,dock.center.y),new Vector2(Socket.xMax,dock.center.y),color,2);
+   for(int side=0;side<2;side++)for(int pin=0;pin<12;pin++){
+    float edge=side==0?dock.x:dock.xMax,direction=side==0?-1:1,y=dock.y+25+pin*15;
+    Vector2 a=new Vector2(edge,y),b=a+new Vector2(direction*(7+pin%3*3),0),c=b+new Vector2(direction*5,(pin%2==0?1:-1)*5),d=c+new Vector2(direction*7,0);
+    Color faint=new Color(color.r,color.g,color.b,.2f);
+    Ui.Line("소켓 미세 회로",root,a,b,faint,.7f);Ui.Line("소켓 미세 회로 굴절",root,b,c,faint,.7f);Ui.Line("소켓 미세 회로 끝",root,c,d,faint,.7f);
+    Ui.Box("회로 접점",root,d.x-1,d.y-1,2,2,new Color(color.r,color.g,color.b,.3f),false,.6f,12);
+   }
    Phase="dock";for(float t=0;t<1;t+=Delta/.25f){Progress=t;clamp.color=Color.Lerp(Color.white,color,t);yield return null;}
 
    // The rendered card itself is sliced. Each shard retains the corresponding artwork and letters.
@@ -53,6 +58,8 @@ namespace Breach.UI {
     Ui.Line("회로 번짐",traceRoot,Routes[lane][seg-1],Routes[lane][seg],new Color(color.r,color.g,color.b,.12f),lane==1?15:9);
     Ui.Line("회로 중심",traceRoot,Routes[lane][seg-1],Routes[lane][seg],new Color(color.r,color.g,color.b,.7f),lane==1?6:2);
    }
+   var pulses=new List<Shape>();
+   for(int lane=0;lane<3;lane++)for(int wave=0;wave<3;wave++)for(int part=0;part<9;part++)pulses.Add(Ui.Box("이동 신호 잔광",root,0,0,1,1,color));
    Phase="fragment";
    for(float elapsed=0;elapsed<1.65f;elapsed+=Delta){Progress=elapsed/1.65f;
     for(int i=0;i<tiles.Count;i++){
@@ -63,6 +70,17 @@ namespace Breach.UI {
      else {float routeT=(u-.48f)/.52f;p=Along(Routes[lane],routeT);size=new Vector2(12,4);}
      tile.gameObject.SetActive(u<1);At(tile.rectTransform,p);tile.rectTransform.sizeDelta=size;
      tile.color=Color.Lerp(Color.white,new Color(color.r,color.g,color.b,1),Mathf.InverseLerp(.25f,.6f,u));
+    }
+    int pulseIndex=0;
+    for(int lane=0;lane<3;lane++)for(int wave=0;wave<3;wave++){
+     float head=(elapsed-.48f-wave*.17f-lane*.025f)/.72f;
+     for(int part=0;part<9;part++){
+      var pulse=pulses[pulseIndex++];float t=head-part*.027f;bool visible=t>=0&&t<=1;pulse.gameObject.SetActive(visible);if(!visible)continue;
+      Vector2 a=Along(Routes[lane],Mathf.Max(0,t-.027f)),b=Along(Routes[lane],t),d=b-a;
+      At(pulse.rectTransform,a);pulse.rectTransform.pivot=new Vector2(0,.5f);pulse.rectTransform.localRotation=Quaternion.Euler(0,0,-Mathf.Atan2(d.y,d.x)*Mathf.Rad2Deg);
+      pulse.rectTransform.sizeDelta=new Vector2(Mathf.Max(2,d.magnitude),part==0?6:10-part*.65f);
+      Color ink=part==0?Color.Lerp(color,Color.white,.8f):color;ink.a=part==0?1:.48f*(1-part/9f);pulse.color=ink;
+     }
     }
     yield return null;
    }

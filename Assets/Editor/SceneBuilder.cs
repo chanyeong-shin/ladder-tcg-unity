@@ -43,7 +43,8 @@ namespace Breach.EditorTools {
    var normal=Import("server",root);var empty=Import("serverNull",root);var offline=Import("offline",root);s.normal=normal.gameObject;s.empty=empty.gameObject;s.offline=offline.gameObject;
    Ui.Box("장전 발광 - 바깥",normal,13,18,74,74,new Color(Ui.Cyan.r,Ui.Cyan.g,Ui.Cyan.b,.06f),false,8,6).transform.SetAsFirstSibling();
    Ui.Box("장전 발광 - 안쪽",normal,19,24,62,62,new Color(Ui.Cyan.r,Ui.Cyan.g,Ui.Cyan.b,.12f),false,4,6).transform.SetAsFirstSibling();
-   s.number=normal.GetComponentsInChildren<TMP_Text>().First(t=>t.name=="장전량");Place(s.number.rectTransform,0,0,100,110);s.number.alignment=TextAlignmentOptions.Center;
+   s.number=normal.GetComponentsInChildren<TMP_Text>().First(t=>t.name=="장전량");Place(s.number.rectTransform,0,0,100,110);s.number.alignment=TextAlignmentOptions.Midline;
+   foreach(var text in empty.GetComponentsInChildren<TMP_Text>())if(text.text=="null"){Place(text.rectTransform,0,0,100,110);text.alignment=TextAlignmentOptions.Midline;}
    if(owner==1){Tint(normal);Tint(empty);}normal.gameObject.SetActive(false);empty.gameObject.SetActive(true);offline.gameObject.SetActive(false);
    var prefab=PrefabUtility.SaveAsPrefabAsset(root.gameObject,"Assets/Prefabs/Server_"+owner+".prefab");UnityEngine.Object.DestroyImmediate(root.gameObject);return prefab.GetComponent<ServerView>();
   }
@@ -83,6 +84,6 @@ namespace Breach.EditorTools {
   }
   public static void Rebuild(){try{Create();Build();}catch(Exception e){Debug.LogException(e);if(Application.isBatchMode)EditorApplication.Exit(1);}}
   [MenuItem("Breach/저장된 씬으로 Windows 빌드")]
-  public static void Build(){try{var report=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=new[]{"Assets/Scenes/Game.unity"},locationPathName="Build/BreachProtocol.exe",target=BuildTarget.StandaloneWindows64,options=BuildOptions.Development});File.WriteAllText("Build/build-result.txt",report.summary.result+"\nErrors: "+report.summary.totalErrors);if(Application.isBatchMode)EditorApplication.Exit(report.summary.result==UnityEditor.Build.Reporting.BuildResult.Succeeded?0:1);}catch(Exception e){Debug.LogException(e);if(Application.isBatchMode)EditorApplication.Exit(1);}}
+  public static void Build(){try{var args=Environment.GetCommandLineArgs();int outputArg=Array.IndexOf(args,"-breachBuildPath");string output=outputArg>=0&&outputArg+1<args.Length?args[outputArg+1]:"Build/BreachProtocol.exe";Directory.CreateDirectory(Path.GetDirectoryName(output));var report=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=new[]{"Assets/Scenes/Game.unity"},locationPathName=output,target=BuildTarget.StandaloneWindows64,options=BuildOptions.Development});File.WriteAllText(Path.Combine(Path.GetDirectoryName(output),"build-result.txt"),report.summary.result+"\nErrors: "+report.summary.totalErrors);if(Application.isBatchMode)EditorApplication.Exit(report.summary.result==UnityEditor.Build.Reporting.BuildResult.Succeeded?0:1);}catch(Exception e){Debug.LogException(e);if(Application.isBatchMode)EditorApplication.Exit(1);}}
  }
 }
