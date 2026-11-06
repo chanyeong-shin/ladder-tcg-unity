@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 갱신 | 2026-10-25 재구현·연출 보강 |
+| 갱신 | 2026-11-07 · 9주차 Unity 연출 적용 |
 | 환경 | Unity 6000.3.22f1 · UGUI · Windows · 싱글플레이 봇 대전 |
 | 규칙 | 상위 사다리전투_TCG_기획서.md 1~8절 |
 | 화면 | 2026-10-25 Figma Week08_Proposals 스냅샷 기반 |
@@ -11,6 +11,8 @@
 ## 1. 플레이
 
 카드 호버 확대·복귀는 약0.15초, 버튼 반응은 약0.12초다. 카드 사용은 소켓 안착→실제 카드 그림 60조각 분해→세 회로 전송→판 테두리 흡수→장전·연결 결과 순서다. 턴 전환·상쇄·차단·착탄에도 짧은 피드백을 표시한다. 기본 판·소켓·서버·버튼 좌표는 유지하며, 손패는 확대 종료 후 원위치로 복귀한다. 드래그 중에는 턴을 종료할 수 없다.
+
+판 흡수는 왼쪽 도착부에서 위·아래로 나뉘어 진행하고 두 선두가 만난 뒤 네 변 전체가 발광한다. 방화벽은 양쪽 핀과 회로가 있는 반도체 장치가 맞물린다. 공격은 응축→발사 섬광→가로 빛번짐 탄과 잔광→상쇄·차단·착탄→복귀 순서다. 카메라는 판 내부를 자동 확대·추적하고 복원한다. 바깥 테두리·채널 제목·손패·버튼은 고정한다. 턴은 VHS 노이즈의 정점에서 바뀌며 이후 평상시 필터로 돌아온다.
 
 `Build/BreachProtocol.exe`를 실행한다. 실행 파일만 옮기지 않는다. 같은 폴더의 데이터·DLL·MonoBleedingEdge도 필요하다.
 
@@ -41,6 +43,10 @@ Unity에서는 이 `unity` 폴더를 열고 `Assets/Scenes/Game.unity`에서 Pla
 | Assets/Prefabs | 카드 6종·공통 뒷면·양측 서버 원본 |
 | Assets/Scripts/Core/Battle.cs | 규칙·상태·턴·합법성·되돌리기·봇 판단 |
 | Assets/Scripts/UI/BattleController.cs | 입력·화면 갱신·전송/발사 연출 |
+| Assets/Scripts/UI/CombatPresentation.cs | 공격 응축·경로 이동·충돌·자동 카메라와 복원 |
+| Assets/Scripts/UI/FlareGraphic.cs | 사각 배경 없는 수평 빛번짐 도형 |
+| Assets/Scripts/UI/CardTransferFx.cs | 소켓 분해·세 회로·양방향 흡수·적용 결과·턴 안내 |
+| Assets/Scripts/UI/CrtOverlay.cs · Assets/Art/CrtOverlay.shader | 평상시 CRT와 턴 교체 VHS 노이즈 |
 | Assets/Scripts/UI/CardView.cs | 카드 호버·클릭·드래그 이벤트 |
 | Assets/Scripts/UI/ServerView.cs | null·장전·OFFLINE 표시와 경로 호버 |
 | Assets/Scripts/UI/Shape.cs | 테두리·선·육각형 UI 도형 |
@@ -61,7 +67,7 @@ Unity에서는 이 `unity` 폴더를 열고 `Assets/Scenes/Game.unity`에서 Pla
 
 규칙 검사: `dotnet run --project Tests/CoreTests.csproj -p:BaseOutputPath=bin3/`.
 
-실행 검증은 상위 `_검증/Unity_재구현/smoke/`에 기록한다. 고정된 한 판의 시작·선택·사용·잘못된 드롭·취소·장전·발동·승리·재시작을 검사한다. 밸런스 시뮬레이션이나 모든 랜덤 조합의 완전 검사는 아니다.
+최신 실행 검증은 상위 `_검증/2026-11-07_Unity연출/`에 기록한다. 규칙 25사례, 고정 공격 6상황과 카메라 복원·방화벽 맞물림·양방향 흡수·VHS 복귀 검사, 기존 카드 입력 검사, 승리·재시작 검사가 통과했다. 새 실행본은 `Build/BreachProtocol.exe`, 이전 실행본은 상위 `_보관/Unity_2026-11-07_연출적용전/`에 보존한다. 고정된 한 판의 시작·선택·사용·잘못된 드롭·취소·장전·발동·승리·재시작을 검사한다. 밸런스 시뮬레이션이나 모든 랜덤 조합의 완전 검사는 아니다.
 
 사운드와 튜토리얼은 기획서에서 미정이므로 추가하지 않았다. 연출 속도·강도와 실제 마우스 조작감은 사용자 플레이로 확인한다. 봇의 장기 대전 균형도 이번 검증 범위 밖이다.
 
