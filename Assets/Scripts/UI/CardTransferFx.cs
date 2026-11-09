@@ -107,13 +107,18 @@ namespace Breach.UI {
    Destroy(root.gameObject);
   }
   public IEnumerator Applied(Card card,int owner,int target,bool connected){
-   var root=Root("카드 적용 결과");Color color=owner==0?Ui.Cyan:Ui.Red;Vector2 point;string message;Shape mark;RectTransform wall=null;
+   var controller=GetComponent<BattleController>();
+   bool onBoard=card!=Card.Buffer&&card!=Card.Overflow;
+   var root=onBoard&&controller&&controller.presentation?controller.presentation.BoardEffect("카드 적용 결과"):Root("카드 적용 결과");Color color=owner==0?Ui.Cyan:Ui.Red;Vector2 point;string message;Shape mark;RectTransform wall=null;var gates=new List<RectTransform>();
    if(card==Card.Inject||card==Card.ZeroDay){point=new Vector2(BattleController.LaneX[target],owner==0?777:201);message=card==Card.ZeroDay?"관통 패킷 장전":"+1 장전";mark=Ui.Box("대상 서버 점등",root,point.x-38,point.y-38,76,76,color,false,4,6);}
    else if(card==Card.Reroute){point=new Vector2((BattleController.LaneX[target%2]+BattleController.LaneX[target%2+1])/2,BattleController.RowY[target/2]);message=connected?"회선 연결":"회선 제거";color=connected?color:Ui.Gold;mark=Ui.Line("회선 적용",root,new Vector2(point.x-140,point.y),new Vector2(point.x+140,point.y),color,7);}
-   else if(card==Card.Firewall){point=new Vector2(BattleController.LaneX[target],497);message="채널 차단";color=Ui.Gold;wall=CombatPresentation.Firewall(root,point.x,point.y,0);mark=Ui.Box("방화벽 점등",root,point.x-45,point.y-50,90,100,Color.clear,false,3);}
+   else if(card==Card.Firewall){point=CombatPresentation.FirewallPoint(owner,target);message="양방향 경로 차단";color=Ui.Gold;
+    if(controller&&controller.State!=null)foreach(var gatePoint in CombatPresentation.FirewallEndpoints(controller.State,target))gates.Add(CombatPresentation.Firewall(root,gatePoint.x,gatePoint.y,0));
+    else {gates.Add(CombatPresentation.Firewall(root,point.x,292,0));gates.Add(CombatPresentation.Firewall(root,point.x,686,0));}
+    wall=gates[0];mark=Ui.Box("방화벽 점등",root,point.x-45,point.y-29,90,58,Color.clear,false,3);}
    else {point=new Vector2(982,873);message="손패 보충";mark=Ui.Line("손패 보충",root,new Vector2(742,866),new Vector2(1222,866),color,3);}
    var label=Ui.Text("적용 결과",root,point.x-110,point.y-(wall?85:63),220,30,message,font,19,color);label.alignment=TextAlignmentOptions.Center;
-   Phase="applied";for(float t=0;t<1;t+=Delta/.5f){Progress=t;float a=1-t*t;if(wall){float close=Ease(Mathf.InverseLerp(.22f,.52f,t));CombatPresentation.CloseFirewall(wall,close);if(t<.52f)a=0;}mark.color=new Color(color.r,color.g,color.b,a);label.color=new Color(color.r,color.g,color.b,a);yield return null;}
+   Phase="applied";for(float t=0;t<1;t+=Delta/.5f){Progress=t;float a=1-t*t;if(wall){float close=Ease(Mathf.InverseLerp(.22f,.52f,t));foreach(var gate in gates)CombatPresentation.CloseFirewall(gate,close);if(t<.52f)a=0;}mark.color=new Color(color.r,color.g,color.b,a);label.color=new Color(color.r,color.g,color.b,a);yield return null;}
    Destroy(root.gameObject);Phase="idle";
   }
   public IEnumerator Turn(int phase,int actor,int attacker,System.Action atPeak=null){
@@ -123,10 +128,15 @@ namespace Breach.UI {
    var header=Ui.Box("현재 단계 점등",root,161+544*phase,23,536,36,Color.clear,false,2);
    var crt=FindFirstObjectByType<CrtOverlay>();bool changed=false;
    Phase="turn";for(float t=0;t<1;t+=Delta/.85f){Progress=t;float noise=t<.35f?Ease(t/.35f):t<.48f?1:Mathf.Pow(1-Mathf.InverseLerp(.48f,.92f,t),2);if(crt)crt.SetBurst(noise);
-    if(!changed&&t>=.4f){changed=true;atPeak?.Invoke();}float a=changed?Mathf.Sin(Mathf.InverseLerp(.4f,1,t)*Mathf.PI):0;
+    if(!changed&&t>=.4f){changed=true;atPeak?.Invoke();}float a=changed?Ease(Mathf.InverseLerp(.4f,.7f,t)):0;
     label.color=new Color(color.r,color.g,color.b,a);header.color=new Color(color.r,color.g,color.b,a);yield return null;
    }
-   if(!changed)atPeak?.Invoke();if(crt)crt.SetBurst(0);Destroy(root.gameObject);Phase="idle";
+   if(!changed)atPeak?.Invoke();if(crt)crt.SetBurst(0);
+   // VHS exchange stays short; readable text holds independently of noisy frames.
+   label.color=header.color=color;Phase="turn-hold";
+   for(float t=0;t<1;t+=Time.unscaledDeltaTime/1.35f){Progress=t;yield return null;}
+   for(float t=0;t<1;t+=Time.unscaledDeltaTime/.3f){label.color=header.color=new Color(color.r,color.g,color.b,1-t);yield return null;}
+   Destroy(root.gameObject);Phase="idle";
   }
   public IEnumerator Impact(Vector2 point,string caption,Color color){var root=Root("패킷 충돌");var ring=Ui.Box("충돌 섬광",root,point.x-22,point.y-22,44,44,color,false,3,6);var label=Ui.Text("충돌 결과",root,point.x-95,point.y-50,190,26,caption,font,17,color);label.alignment=TextAlignmentOptions.Center;for(float t=0;t<1;t+=Delta/.3f){ring.color=label.color=new Color(color.r,color.g,color.b,1-t);float size=44+t*24;At(ring.rectTransform,point-Vector2.one*size/2);ring.rectTransform.sizeDelta=Vector2.one*size;yield return null;}Destroy(root.gameObject);}
  }

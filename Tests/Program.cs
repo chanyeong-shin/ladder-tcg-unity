@@ -21,6 +21,19 @@ class Program {
  b=Empty();b.Power[0,0]=3;b.Power[0,1]=3;b.Resolve();Check(b.Alive(1)==0,"simultaneous splash cannot erase a scheduled impact");
  b=Empty();b.Hands[0].Add(Card.Overflow);b.Play(0,0,0);Check(b.Hands[0].Count==0&&b.Hidden.Count==1,"overflow waits for reveal");b.Resolve();Check(b.Hands[0].Count==4,"overflow draws four at reveal");
  b=Empty();b.Health[0,0]=0;b.Health[0,1]=0;b.Phase=2;b.NextRound();Check(b.Hands[0].Count==3&&b.Hands[1].Count==1,"destroyed servers increase round draw");
+ b=Empty();b.Phase=1;b.Power[0,0]=1;b.Power[1,0]=3;b.Hands[1].Add(Card.Firewall);
+ Check(!b.ChooseBot(out var bi,out var bt),"bot does not wall off its winning counterattack");
+ b=Empty();b.Attacker=1;b.Health[0,1]=b.Health[0,2]=0;b.Hidden.Add(new Secret(1,Card.ZeroDay,0));b.Hands[1].Add(Card.ZeroDay);
+ Check(!b.ChooseBot(out bi,out bt),"bot does not repeat an already lethal reserved zero-day");
+ b=Empty();b.Phase=1;b.Power[0,0]=3;b.Hands[1].Add(Card.Firewall);
+ Check(b.ChooseBot(out bi,out bt)&&bt==0,"bot blocks an otherwise lethal public attack");
+ b=Empty();b.Attacker=1;b.Health[0,0]=0;b.Power[1,0]=1;b.Hands[1].Add(Card.Reroute);
+ Check(b.ChooseBot(out bi,out bt)&&bt%2==0,"bot reroutes ammunition toward a live server");
+ var plain=Empty();plain.Phase=1;plain.Power[0,1]=2;plain.Hands[1].Add(Card.Inject);plain.Hands[1].Add(Card.Firewall);
+ var hidden=Empty();hidden.Phase=1;hidden.Power[0,1]=2;hidden.Hands[1].Add(Card.Inject);hidden.Hands[1].Add(Card.Firewall);hidden.Hidden.Add(new Secret(0,Card.ZeroDay,2));hidden.Hands[0].Add(Card.Overflow);
+ plain.ChooseBot(out var pi,out var pt);hidden.ChooseBot(out var hi,out var ht);
+ Check(pi==hi&&pt==ht,"bot decision cannot read opponent secret or hand");
+ Check(hidden.Power[0,1]==2&&hidden.Hidden.Count==1&&hidden.Hands[1].Count==2,"bot evaluation leaves live board untouched");
  Console.WriteLine("TOTAL "+count);
  }
 }

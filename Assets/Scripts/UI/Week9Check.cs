@@ -38,7 +38,7 @@ namespace Breach.UI {
    }
    bool wallDone=false;StartCoroutine(Run(c.feedback.Applied(Card.Firewall,0,1,true),()=>wallDone=true));
    yield return Await(()=>c.feedback.Phase=="applied"&&c.feedback.Progress>.08f,"wall open");if(failed)yield break;
-   var wall=BattleController.Find(c.fx,"반도체 방화벽") as RectTransform;
+   var wall=BattleController.Find(c.game.transform,"반도체 방화벽") as RectTransform;
    if(!wall||((RectTransform)wall.GetChild(0)).anchoredPosition.x>=-15||wall.GetChild(2).gameObject.activeSelf){Fail("Firewall did not prepare open");yield break;}yield return Shot("firewall-open");
    yield return Await(()=>c.feedback.Phase=="applied"&&c.feedback.Progress>.6f,"wall close");if(failed)yield break;
    if(Mathf.Abs(((RectTransform)wall.GetChild(0)).anchoredPosition.x)>.1f||!wall.GetChild(2).gameObject.activeSelf){Fail("Firewall did not lock");yield break;}yield return Shot("firewall-locked");yield return Await(()=>wallDone,"wall cleanup");if(failed)yield break;

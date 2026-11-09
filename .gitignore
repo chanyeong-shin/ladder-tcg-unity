@@ -1,5 +1,5 @@
-# ==========================================================
-# Unity .gitignore  —  게임개발실습 / ARENA BREAK
+﻿# ==========================================================
+# Unity .gitignore  —  BREACH PROTOCOL
 # Unity 프로젝트를 만들자마자 .gitattributes 와 함께 "첫 커밋"에 넣을 것.
 # 이걸 빼고 커밋하면 Library/ 가 통째로 올라가 리포지토리가 수 GB가 되고
 # 팀 전원이 머지 충돌을 겪는다.
@@ -13,6 +13,7 @@
 /[Bb]uilds/
 /BuildPreview/
 /BuildWeek9/
+/BuildNovember/
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 /[Mm]emoryCaptures/

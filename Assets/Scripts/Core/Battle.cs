@@ -65,16 +65,48 @@ namespace Breach {
   void AccumulateHit(int owner,int channel,int amount,Resolution r,int[,] damage){if(r.Before[owner,channel]<=0)return;int over=Math.Max(0,amount-r.Before[owner,channel]);damage[owner,channel]+=amount;r.Events.Add((owner==0?"내":"상대")+" 서버 "+(channel+1)+" · 피해 "+amount);int splash=over/2;if(splash>0){if(channel>0)damage[owner,channel-1]+=splash;if(channel<2)damage[owner,channel+1]+=splash;}}
   public int Alive(int player){int n=0;for(int c=0;c<3;c++)if(Health[player,c]>0)n++;return n;}
   public void NextRound(){if(Winner!=-1)return;if(Phase!=2)throw new InvalidOperationException("Resolve before next round");Round++;Attacker=1-Attacker;Phase=0;Array.Clear(Walls,0,3);for(int p=0;p<2;p++)Draw(p,1+3-Alive(p));SaveAction();}
-  // The bot evaluates public ammunition only. It never reads Hidden or the other hand.
-  public bool ChooseBot(out int index,out int target){index=-1;target=0;if(Actor!=1||Phase>=2||Winner!=-1)return false;var choices=new List<int[]>();float best=float.NegativeInfinity;
-   for(int i=0;i<Hands[1].Count;i++){Card c=Hands[1][i];int count=c==Card.Reroute?6:(c==Card.Buffer||c==Card.Overflow?1:3);for(int t=0;t<count;t++){if(!CanPlay(1,i,t))continue;float score=0;
-    if(c==Card.Buffer||c==Card.Overflow)score=Hands[1].Count<=(c==Card.Buffer?3:2)?20:-5;
-    else if(c==Card.Inject||c==Card.ZeroDay){var route=Route(1,t);score=Health[0,route.End]>0?7:0;score-=Power[1,t]*3;foreach(var p in Enumerable.Range(0,3)){var incoming=Route(0,p);if(Power[0,p]>0&&Touch(route,incoming)&&Health[1,incoming.End]>0)score+=Phase==1?8:1;}if(c==Card.ZeroDay)score+=1;}
-    else if(c==Card.Firewall){score=-2;for(int p=0;p<3;p++){var route=Route(0,p);if(Power[0,p]>0&&route.Cells.Any(q=>q.Lane==t)&&Health[1,route.End]>0)score+=12;}}
-    else {float before=PublicScore();int row=t/2,old=Rungs[row];Rungs[row]=old<0?t%2:-1;score=(PublicScore()-before)*5-1;Rungs[row]=old;}
-    if(score>best){best=score;choices.Clear();}if(score==best)choices.Add(new[]{i,t});}}
-   if(best<=0||choices.Count==0)return false;var pick=choices[Next(choices.Count)];index=pick[0];target=pick[1];return true;
+  // Evaluate only the public board plus our own reserved cards. The opponent's
+  // hand/secrets are deliberately absent. Resolving these copies uses the same
+  // collision, piercing, firewall and splash rules as play, without touching RNG.
+  Battle BotView(){
+   var b=new Battle(1,Attacker){Phase=Phase,Round=Round,Winner=Winner};
+   b.Health=(int[,])Health.Clone();b.Power=(int[,])Power.Clone();b.Pierce=(bool[,])Pierce.Clone();b.Walls=(bool[])Walls.Clone();
+   b.Rungs=(int[])Rungs.Clone();b.RungOwners=(int[])RungOwners.Clone();
+   b.Hands[0].Clear();b.Hands[1]=new List<Card>(Hands[1]);
+   b.Hidden=Hidden.Where(s=>s.Owner==1).ToList();return b;
   }
-  float PublicScore(){float n=0;for(int c=0;c<3;c++){if(Power[1,c]>0&&Health[0,Route(1,c).End]>0)n+=Power[1,c];if(Phase==1&&Power[0,c]>0&&Health[1,Route(0,c).End]>0)n-=Power[0,c];}return n;}
+  static float Outcome(Battle view){
+   var result=view.Resolve();float score=0;
+   for(int lane=0;lane<3;lane++){
+    if(result.Before[0,lane]>0&&view.Health[0,lane]==0)score+=35;
+    if(result.Before[1,lane]>0&&view.Health[1,lane]==0)score-=40;
+    score+=(result.Before[0,lane]-view.Health[0,lane])*2;
+    score-=(result.Before[1,lane]-view.Health[1,lane])*2;
+   }
+   if(view.Winner==1)score+=180;else if(view.Winner==0)score-=220;
+   return score;
+  }
+  public bool ChooseBot(out int index,out int target){
+   index=-1;target=0;if(Actor!=1||Phase>=2||Winner!=-1)return false;
+   float before=Outcome(BotView()),best=0;var choices=new List<int[]>();
+   for(int i=0;i<Hands[1].Count;i++){
+    Card card=Hands[1][i];int count=card==Card.Reroute?6:(card==Card.Buffer||card==Card.Overflow?1:3);
+    for(int t=0;t<count;t++){
+     if(!CanPlay(1,i,t))continue;float score;
+     if(card==Card.Buffer||card==Card.Overflow){
+      int reserved=Hidden.Count(s=>s.Owner==1&&s.Card==Card.Overflow)*4;
+      int slots=Math.Max(0,5-(Hands[1].Count-1)-(card==Card.Overflow?reserved:0));
+      int gain=Math.Min(slots,card==Card.Buffer?2:4)-1;
+      score=gain>0?gain*(card==Card.Buffer?2.5f:1.5f):-.5f;
+     }else{
+      var candidate=BotView();candidate.Play(1,i,t);
+      score=Outcome(candidate)-before-(Cards.Enhanced(card)?.65f:.2f);
+     }
+     if(score>best+.001f){best=score;choices.Clear();choices.Add(new[]{i,t});}
+     else if(score>0&&Math.Abs(score-best)<.001f)choices.Add(new[]{i,t});
+    }
+   }
+   if(choices.Count==0)return false;var pick=choices[Next(choices.Count)];index=pick[0];target=pick[1];return true;
+  }
  }
 }
