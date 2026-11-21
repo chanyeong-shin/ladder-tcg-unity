@@ -26,7 +26,7 @@ namespace Breach.UI
         public bool ResolutionFocused { get; private set; }
         public int BlockContactCount { get; private set; }
         public Vector2 LastBlockContact { get; private set; }
-        float Delta => Time.unscaledDeltaTime * Mathf.Max(.1f, c.animationSpeed);
+        float Delta => Time.unscaledDeltaTime * Mathf.Max(.1f, c.PlaybackSpeed);
         public void Initialize(BattleController controller)
         {
             c = controller;
