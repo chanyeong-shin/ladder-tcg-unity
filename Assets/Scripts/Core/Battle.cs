@@ -21,13 +21,18 @@ namespace Breach {
   public List<Card>[] Hands={new List<Card>(),new List<Card>()};
   public List<Secret> Hidden=new List<Secret>();
   public int Round=1,Attacker,Phase,Winner=-1;public int Actor {get{return Phase==0?Attacker:1-Attacker;}}
-  uint random;Snapshot snapshot;
+  uint random;readonly List<Snapshot> history=new List<Snapshot>();
   sealed class Snapshot {public int[,] Power;public bool[,] Pierce;public int[] Rungs,Owners;public List<Card>[] Hands;public List<Secret> Hidden;public uint Random;}
   public Battle(uint seed,int attacker=-1){random=seed==0?1:seed;Attacker=attacker<0?Next(2):attacker;for(int p=0;p<2;p++){for(int c=0;c<3;c++)Health[p,c]=1;Draw(p,3);Draw(p,1);}SaveAction();}
   public int Next(int max){random^=random<<13;random^=random>>17;random^=random<<5;return (int)(random%(uint)max);}
   public void Draw(int player,int count){int[] weights={10,5,3,1,1,1};for(int i=0;i<count&&Hands[player].Count<5;i++){int r=Next(21);for(int c=0;c<6;c++){r-=weights[c];if(r<0){Hands[player].Add((Card)c);break;}}}}
-  public void SaveAction(){snapshot=new Snapshot{Power=(int[,])Power.Clone(),Pierce=(bool[,])Pierce.Clone(),Rungs=(int[])Rungs.Clone(),Owners=(int[])RungOwners.Clone(),Hands=Hands.Select(h=>new List<Card>(h)).ToArray(),Hidden=new List<Secret>(Hidden),Random=random};}
-  public bool Undo(){if(Phase>=2||Winner!=-1||snapshot==null)return false;Power=(int[,])snapshot.Power.Clone();Pierce=(bool[,])snapshot.Pierce.Clone();Rungs=(int[])snapshot.Rungs.Clone();RungOwners=(int[])snapshot.Owners.Clone();Hands=snapshot.Hands.Select(h=>new List<Card>(h)).ToArray();Hidden=new List<Secret>(snapshot.Hidden);random=snapshot.Random;return true;}
+  // Turn start: nothing before this point can be undone. Each Play pushes one step;
+  // a draw reveals new cards, so it locks itself and every earlier step.
+  public void SaveAction(){history.Clear();}
+  Snapshot Capture(){return new Snapshot{Power=(int[,])Power.Clone(),Pierce=(bool[,])Pierce.Clone(),Rungs=(int[])Rungs.Clone(),Owners=(int[])RungOwners.Clone(),Hands=Hands.Select(h=>new List<Card>(h)).ToArray(),Hidden=new List<Secret>(Hidden),Random=random};}
+  public bool CanUndo {get{return Phase<2&&Winner==-1&&history.Count>0;}}
+  public int UndoSteps {get{return history.Count;}}
+  public bool Undo(){if(!CanUndo)return false;var snapshot=history[history.Count-1];history.RemoveAt(history.Count-1);Power=(int[,])snapshot.Power.Clone();Pierce=(bool[,])snapshot.Pierce.Clone();Rungs=(int[])snapshot.Rungs.Clone();RungOwners=(int[])snapshot.Owners.Clone();Hands=snapshot.Hands.Select(h=>new List<Card>(h)).ToArray();Hidden=new List<Secret>(snapshot.Hidden);random=snapshot.Random;return true;}
   public bool CanPlay(int owner,int index,int target){
    if(Winner!=-1||Phase>=2||owner!=Actor||index<0||index>=Hands[owner].Count)return false;
    Card c=Hands[owner][index];
@@ -36,11 +41,13 @@ namespace Breach {
    if(c==Card.Reroute){if(target<0||target>=6)return false;return Rungs[target/2]==-1||Rungs[target/2]==target%2;}
    return true;
   }
-  public bool Play(int owner,int index,int target){if(!CanPlay(owner,index,target))return false;Card c=Hands[owner][index];Hands[owner].RemoveAt(index);
+  public bool Play(int owner,int index,int target){if(!CanPlay(owner,index,target))return false;history.Add(Capture());Card c=Hands[owner][index];Hands[owner].RemoveAt(index);
+   // Draw cards draw at once (OVERFLOW stays face down until resolve, but its draw is not deferred).
+   if(c==Card.Overflow){Hidden.Add(new Secret(owner,c,target));Draw(owner,4);history.Clear();return true;}
    if(Cards.Enhanced(c))Hidden.Add(new Secret(owner,c,target));
    else if(c==Card.Inject)Power[owner,target]++;
    else if(c==Card.Reroute){int row=target/2;Rungs[row]=Rungs[row]==-1?target%2:-1;RungOwners[row]=Rungs[row]<0?-1:owner;}
-   else Draw(owner,2);return true;
+   else {Draw(owner,2);history.Clear();}return true;
   }
   public void EndAction(){if(Winner!=-1||Phase>=2)return;Phase++;if(Phase==1)SaveAction();}
   public Packet Route(int owner,int start){var p=new Packet{Owner=owner,Start=start,Power=Power[owner,start],Initial=Power[owner,start],Pierce=Pierce[owner,start]};int lane=start;
@@ -50,7 +57,7 @@ namespace Breach {
   }
   public bool Touch(Packet a,Packet b){return a.Cells.Any(c=>b.Cells.Any(d=>c.Row==d.Row&&c.Lane==d.Lane));}
   public Resolution Resolve(){var r=new Resolution{Before=(int[,])Health.Clone()};
-   foreach(var s in Hidden){r.Revealed.Add(s);r.Events.Add((s.Owner==0?"나":"상대")+" · "+Cards.Names[(int)s.Card]+" 공개");if(s.Card==Card.ZeroDay){Power[s.Owner,s.Target]++;Pierce[s.Owner,s.Target]=true;}else if(s.Card==Card.Firewall)Walls[s.Target]=true;else Draw(s.Owner,4);}Hidden.Clear();
+   foreach(var s in Hidden){r.Revealed.Add(s);r.Events.Add((s.Owner==0?"나":"상대")+" · "+Cards.Names[(int)s.Card]+" 공개");if(s.Card==Card.ZeroDay){Power[s.Owner,s.Target]++;Pierce[s.Owner,s.Target]=true;}else if(s.Card==Card.Firewall)Walls[s.Target]=true;}Hidden.Clear();
    for(int p=0;p<2;p++)for(int c=0;c<3;c++)if(Power[p,c]>0){var shot=Route(p,c);if(shot.Cells.Any(cell=>Walls[cell.Lane])){shot.Blocked=true;shot.Power=0;r.Events.Add("방화벽 · 패킷 소멸");}r.Packets.Add(shot);}
    foreach(var a in r.Packets.Where(p=>p.Owner==0))foreach(var b in r.Packets.Where(p=>p.Owner==1)){if(a.Power<=0||b.Power<=0||!Touch(a,b))continue;
     if(a.Pierce&&!b.Pierce){b.Power=0;r.Events.Add("제로데이 · 상대 패킷 관통");}
@@ -94,8 +101,7 @@ namespace Breach {
     for(int t=0;t<count;t++){
      if(!CanPlay(1,i,t))continue;float score;
      if(card==Card.Buffer||card==Card.Overflow){
-      int reserved=Hidden.Count(s=>s.Owner==1&&s.Card==Card.Overflow)*4;
-      int slots=Math.Max(0,5-(Hands[1].Count-1)-(card==Card.Overflow?reserved:0));
+      int slots=Math.Max(0,5-(Hands[1].Count-1));
       int gain=Math.Min(slots,card==Card.Buffer?2:4)-1;
       score=gain>0?gain*(card==Card.Buffer?2.5f:1.5f):-.5f;
      }else{
