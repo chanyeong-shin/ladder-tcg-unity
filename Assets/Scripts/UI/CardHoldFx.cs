@@ -6,11 +6,11 @@ namespace Breach.UI {
  // Card hold (2026-11-21 selection): holding a card darkens everything but the board by 55% in 0.25 s,
  // and the screen circuit (22%, soft glow) draws itself under that dark layer in 0.5 s from the
  // screen edge toward the UI parts. The board keeps a faint inner circuit (7%).
- // Scanning hides the circuit; activation then runs signals along the board-bound bundles.
+ // While the card is scanned the circuit stays faint (2026-11-22); activation runs comets along the board-bound bundles.
  public sealed class CardHoldFx : MonoBehaviour {
   public static readonly Rect Board = new Rect(582, 129, 800, 716);
   RectTransform root; CircuitGraphic screen, inner, signals; Shape[] dims;
-  float show, reveal, target; float hideSeconds = .25f;
+  float show, reveal, target, dimWeight = 1, innerPulse; float hideSeconds = .25f;
   public bool Visible { get { return target > 0; } }
   public float Amount { get { return show; } }
 
@@ -27,7 +27,7 @@ namespace Breach.UI {
    Apply();
   }
   CircuitGraphic Make(string name, string data, Color color) { var g = Ui.Rect(name, root, 0, 0, 1920, 1080).gameObject.AddComponent<CircuitGraphic>(); g.Data = CircuitData.Load(data); g.color = color; g.raycastTarget = false; return g; }
-  public void Show() { target = 1; }
+  public void Show(bool dim = true) { target = 1; if (dim) dimWeight = 1; else if (show <= 0) dimWeight = 0; }
   public void Hide(float seconds = .25f) { target = 0; hideSeconds = Mathf.Max(.01f, seconds); }
   public void HideNow() { target = show = reveal = 0; if (signals) signals.SignalTime = -1; Apply(); }
   void Update() {
@@ -38,16 +38,22 @@ namespace Breach.UI {
   }
   void Apply() {
    if (!root) return; float e = show * show * (3 - 2 * show);
-   foreach (var d in dims) d.color = new Color(0, 0, 0, .55f * e);
-   screen.Reveal = reveal * reveal * (3 - 2 * reveal); screen.color = new Color(Ui.Cyan.r, Ui.Cyan.g, Ui.Cyan.b, .22f * e); screen.SetVerticesDirty();
-   inner.Reveal = 1; inner.color = new Color(Ui.Cyan.r, Ui.Cyan.g, Ui.Cyan.b, .07f * e); inner.SetVerticesDirty();
+   foreach (var d in dims) d.color = new Color(0, 0, 0, .55f * e * dimWeight);
+   screen.Reveal = reveal; screen.color = new Color(Ui.Cyan.r, Ui.Cyan.g, Ui.Cyan.b, .22f * e); screen.SetVerticesDirty();
+   inner.Reveal = 1; inner.color = new Color(Ui.Cyan.r, Ui.Cyan.g, Ui.Cyan.b, Mathf.Max(.073f * e * Mathf.Clamp01(reveal), innerPulse)); inner.SetVerticesDirty();
   }
-  // Activation, 0.9 s: each board-bound bundle sends a signal (0–0.3 s staggered) that flashes the board-edge pad.
+  // Activation: one comet per board-bound bundle, staggered over 0.45 s, 0.75 s each, while the circuit stays faint.
   public IEnumerator Activate(System.Func<float> delta, System.Action<float> progress) {
-   signals.color = Color.white;
-   for (float t = 0; t < .9f; t += delta()) { progress?.Invoke(t / .9f); signals.SignalTime = t; signals.SetVerticesDirty(); yield return null; }
-   signals.SignalTime = -1; signals.SetVerticesDirty();
+   signals.color = new Color(1, 1, 1, .85f);
+   for (float t = 0; t < CircuitGraphic.SignalLength; t += delta()) { progress?.Invoke(t / CircuitGraphic.SignalLength); signals.SignalTime = t; innerPulse = .2f * Mathf.Max(0, Mathf.Sin(Mathf.PI * Mathf.Clamp01(t / CircuitGraphic.SignalLength))); signals.SetVerticesDirty(); yield return null; }
+   innerPulse = 0; signals.SignalTime = -1; signals.SetVerticesDirty();
   }
   void OnDisable() { HideNow(); }
+ }
+ // Target ring blink from HTML tab 4: stroke-opacity .55 + .45 * |sin(4u + i)|.
+ public sealed class RingPulse : MonoBehaviour {
+  public int Phase; float start; Shape shape;
+  void OnEnable() { start = Time.unscaledTime; shape = GetComponent<Shape>(); }
+  void Update() { if (!shape) return; var c = shape.color; c.a = .55f + .45f * Mathf.Abs(Mathf.Sin((Time.unscaledTime - start) * 4 + Phase)); shape.color = c; }
  }
 }

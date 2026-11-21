@@ -131,7 +131,7 @@ namespace Breach.UI
         void Reset(int attacker, int phase)
         {
             var s = c.State; s.Attacker = attacker; s.Phase = phase; s.Winner = -1; s.Hidden.Clear(); Array.Clear(s.Power, 0, 6); Array.Clear(s.Walls, 0, 3); Array.Clear(s.Pierce, 0, 6);
-            s.Hands[0].Clear(); s.Hands[1].Clear(); for (int i = 0; i < 3; i++) { s.Health[0, i] = s.Health[1, i] = 1; s.Rungs[i] = -1; s.RungOwners[i] = -1; }
+            s.Hands[0].Clear(); s.Hands[1].Clear(); for (int i = 0; i < 3; i++) { s.Health[0, i] = s.Health[1, i] = 1; s.Rungs[i] = -1; s.RungOwners[i] = -1; s.RungRiders[i] = -1; }
         }
         static Vector2 Screen(Vector3 world) { return RectTransformUtility.WorldToScreenPoint(null, world); }
         object Private(string name, params object[] args) => typeof(BattleController).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic).Invoke(c, args);

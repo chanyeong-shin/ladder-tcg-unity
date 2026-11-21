@@ -17,7 +17,7 @@ namespace Breach {
  public sealed class Battle {
   public int[,] Health=new int[2,3],Power=new int[2,3];
   public bool[,] Pierce=new bool[2,3];public bool[] Walls=new bool[3];
-  public int[] Rungs={-1,-1,-1},RungOwners={-1,-1,-1},RungRiders={-1,-1,-1};
+  public int[] Rungs={-1,-1,-1},RungOwners={-1,-1,-1},RungRiders={-1,-1,-1};public int LastRemovedRider=-1;
   // Color bridge (2026-11-21): a REROUTE target is slot + 6*color. Slot 0..5 = row*2+edge.
   // Color 0 blue = only the placer rides it, 1 red = only the opponent, 2 yellow = both.
   public const int Mine=0,Theirs=1,Both=2;
@@ -52,7 +52,7 @@ namespace Breach {
    if(c==Card.Overflow){Hidden.Add(new Secret(owner,c,target));Draw(owner,4);history.Clear();return true;}
    if(Cards.Enhanced(c))Hidden.Add(new Secret(owner,c,target));
    else if(c==Card.Inject)Power[owner,target]++;
-   else if(c==Card.Reroute){int slot=Slot(target),row=slot/2,color=Color(target);Rungs[row]=Rungs[row]==-1?slot%2:-1;RungOwners[row]=Rungs[row]<0?-1:owner;RungRiders[row]=Rungs[row]<0?-1:color==Mine?owner:color==Theirs?1-owner:-1;}
+   else if(c==Card.Reroute){int slot=Slot(target),row=slot/2,color=Color(target);if(Rungs[row]!=-1)LastRemovedRider=RungRiders[row];Rungs[row]=Rungs[row]==-1?slot%2:-1;RungOwners[row]=Rungs[row]<0?-1:owner;RungRiders[row]=Rungs[row]<0?-1:color==Mine?owner:color==Theirs?1-owner:-1;}
    else {Draw(owner,2);history.Clear();}return true;
   }
   public void EndAction(){if(Winner!=-1||Phase>=2)return;Phase++;if(Phase==1)SaveAction();}

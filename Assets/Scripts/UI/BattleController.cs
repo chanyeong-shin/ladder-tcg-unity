@@ -26,7 +26,7 @@ namespace Breach.UI
         public void PickBridge(int color) { if (bridge) bridge.Choose(color); }
         public void CancelBridge() { if (bridge) bridge.Cancel(); }
         public static string RiderName(int rider) { return rider < 0 ? "양쪽" : rider == 0 ? "나만" : "상대만"; }
-        public static Color RiderColor(int rider) { return rider < 0 ? Ui.Gold : rider == 0 ? Ui.Cyan : Ui.Red; }
+        public static Color RiderColor(int rider) { return rider < 0 ? BridgeDots.All : rider == 0 ? BridgeDots.Me : BridgeDots.Enemy; }
         bool busy, dragging, skipping; int selected = -1, hover = -1; CardView dragged; TMP_Text skipHint;
         readonly List<int> undoLogMarks = new List<int>();
         // Space or a click fast-forwards every running presentation through its normal code path,
@@ -122,8 +122,18 @@ namespace Breach.UI
         void RefreshBoard(bool showWalls = true)
         {
             Clear(rungs); var rows = HideEnemyActions ? publicRungs : State.Rungs; var riders = HideEnemyActions ? publicRiders : State.RungRiders;
-            for (int row = 0; row < 3; row++) { if (rows[row] >= 0) { int c = rows[row];float inset=row==1?7:4.5f; Ui.Line("회선 " + (row + 1), rungs, new Vector2(LaneX[c]+inset, RowY[row]), new Vector2(LaneX[c + 1]-inset, RowY[row]), RiderColor(riders[row]), 4); } else for (int edge = 0; edge < 2; edge++) for (int k = 0; k < 9; k++) Ui.Line("빈 배치 자리", rungs, new Vector2(LaneX[edge] + 20 + k * 27, RowY[row]), new Vector2(LaneX[edge] + 30 + k * 27, RowY[row]), new Color(.15f, .26f, .3f, .6f), 1); }
+            for (int row = 0; row < 3; row++) { if (rows[row] >= 0) { int c = rows[row];float inset=row==1?7:4.5f; DrawRung(row, c, inset, riders[row]); } else for (int edge = 0; edge < 2; edge++) for (int k = 0; k < 9; k++) Ui.Line("빈 배치 자리", rungs, new Vector2(LaneX[edge] + 20 + k * 27, RowY[row]), new Vector2(LaneX[edge] + 30 + k * 27, RowY[row]), new Color(.15f, .26f, .3f, .6f), 1); }
             if(showWalls)foreach(var point in CombatPresentation.FirewallEndpoints(State))CombatPresentation.Firewall(rungs,point.x,point.y);
+        }
+        // Placed rung (HTML tab 6 drawBoard): rider color, stroke 5 under a blur-4 glow, ▲ me / ▼ enemy / ◆ both above the middle.
+        void DrawRung(int row, int c, float inset, int rider)
+        {
+            Color col = RiderColor(rider); Vector2 a = new Vector2(LaneX[c] + inset, RowY[row]), b = new Vector2(LaneX[c + 1] - inset, RowY[row]);
+            Ui.Line("회선 빛 " + (row + 1), rungs, a, b, new Color(col.r, col.g, col.b, .3f), 5 + 12); Ui.Line("회선 " + (row + 1), rungs, a, b, col, 5);
+            var m = (a + b) / 2; var mark = Ui.Box("회선 표시 " + (rider < 0 ? "양쪽" : rider == 0 ? "나만" : "상대만"), rungs, 0, 0, 14, 14, col, true, 1, rider < 0 ? 4 : 3);
+            mark.rectTransform.pivot = new Vector2(.5f, .5f); mark.rectTransform.anchoredPosition = new Vector2(m.x, -(m.y - 20));
+            if (rider < 0) { mark.rectTransform.sizeDelta = new Vector2(11, 11); mark.rectTransform.localRotation = Quaternion.Euler(0, 0, 45); }
+            else if (rider == 1) mark.rectTransform.localRotation = Quaternion.Euler(0, 0, 180);
         }
         void HoldDraws(int mineBefore, int enemyBefore, bool showEnemy = true)
         {
@@ -210,7 +220,9 @@ namespace Breach.UI
             if (socketTarget) socketTarget.gameObject.SetActive(selectedCard && (card == Card.Buffer || card == Card.Overflow)); if (!selectedCard || !hints) return;
             if (card == Card.Reroute) { for (int t = 0; t < 6; t++) if (State.CanPlay(0, selected, t)) Ui.Line("합법 회선 자리", hints, new Vector2(LaneX[t % 2] + 12, RowY[t / 2]), new Vector2(LaneX[t % 2 + 1] - 12, RowY[t / 2]), new Color(1, .8f, .2f, .55f), 2); }
             else if (card == Card.Buffer || card == Card.Overflow) Ui.Box("소켓에 사용", hints, 223, 381, 228, 236, Ui.Cyan, false, 2);
-            else for (int lane = 0; lane < 3; lane++) if (State.CanPlay(0, selected, lane)) { if (card == Card.Firewall) Ui.Box("차단할 채널", hints, LaneX[lane] - 14, 477, 28, 40, Ui.Gold, false, 2); else Ui.Box("장전할 서버", hints, LaneX[lane] - 35, 742, 70, 70, new Color(.2f, .9f, 1, .65f), false, 2, 6); }
+            else for (int lane = 0; lane < 3; lane++) if (State.CanPlay(0, selected, lane)) { if (card == Card.Firewall) Ui.Box("차단할 채널", hints, LaneX[lane] - 14, 477, 28, 40, Ui.Gold, false, 2); else { // HTML tab 4 targets(): r 18 at y 720, fill rgba(56,217,255,.12), stroke #7fe9ff 3, stroke-opacity .55+.45|sin(4u+i)|
+                    Ui.Box("장전할 서버 안", hints, LaneX[lane] - 18, 702, 36, 36, new Color(.22f, .851f, 1, .12f), true, 1, 40);
+                    var ring = Ui.Box("장전할 서버", hints, LaneX[lane] - 18, 702, 36, 36, new Color(.498f, .914f, 1, 1), false, 3, 40); ring.gameObject.AddComponent<RingPulse>().Phase = lane; } }
         }
         public void Preview(int target, bool rung)
         {
@@ -230,10 +242,9 @@ namespace Breach.UI
         {
             int index = selected; bool dropped = fromDrop;
             if (!dropped && index < cards.Count && cards[index]) { var r = (RectTransform)cards[index].transform; playOrigin = new Vector2(r.anchoredPosition.x, -r.anchoredPosition.y); playSize = r.sizeDelta * r.localScale.x; }
-            ClearPreview(); Vector2 a = new Vector2(LaneX[slot % 2] + 12, RowY[slot / 2]), b = new Vector2(LaneX[slot % 2 + 1] - 12, RowY[slot / 2]);
-            Ui.Line("놓는 중인 가로선", paths, a, b, new Color(1, .8f, .2f, .8f), 4);
+            ClearPreview(); Vector2 a = new Vector2(LaneX[slot % 2] + 16, RowY[slot / 2]), b = new Vector2(LaneX[slot % 2 + 1] - 16, RowY[slot / 2]);
             statusLabel.text = "점을 골라 이 가로선을 탈 쪽을 정하세요 · 파랑 나만 · 노랑 양쪽 · 빨강 상대만 · 다른 곳을 누르면 취소";
-            bridge = BridgeDots.Show(game.transform, (a + b) / 2, font,
+            bridge = BridgeDots.Show(game.transform, a, b,
                 color => { bridge = null; selected = index; fromDrop = dropped; bridgeChosen = true; Use(Battle.RungTarget(slot, color), true); bridgeChosen = false; },
                 () => { bridge = null; selected = -1; fromDrop = false; hold.Hide(); ClearPreview(); Render(); LayoutHand(-1); statusLabel.text = "배치 취소 · 카드를 손패로 돌렸습니다."; });
             RefreshTargets();

@@ -5,7 +5,7 @@ namespace Breach.UI {
  [RequireComponent(typeof(CanvasRenderer))]
  public sealed class Shape:MaskableGraphic {
   public int sides=4;public float thickness=1;public bool filled=true;
-  protected override void OnPopulateMesh(VertexHelper vh){vh.Clear();Rect r=rectTransform.rect;int count=sides==4?4:Mathf.Max(6,sides);Vector2[] outer=new Vector2[count];
+  protected override void OnPopulateMesh(VertexHelper vh){vh.Clear();Rect r=rectTransform.rect;int count=sides==4?4:Mathf.Max(3,sides);Vector2[] outer=new Vector2[count];
    if(sides==4){outer[0]=new Vector2(r.xMin,r.yMin);outer[1]=new Vector2(r.xMin,r.yMax);outer[2]=new Vector2(r.xMax,r.yMax);outer[3]=new Vector2(r.xMax,r.yMin);}
    else for(int i=0;i<count;i++){float a=(90+i*360f/count)*Mathf.Deg2Rad;outer[i]=r.center+new Vector2(Mathf.Cos(a)*r.width/2,Mathf.Sin(a)*r.height/2);}
    if(filled){vh.AddVert(r.center,color,Vector2.zero);for(int i=0;i<count;i++)vh.AddVert(outer[i],color,Vector2.zero);for(int i=0;i<count;i++)vh.AddTriangle(0,i+1,(i+1)%count+1);}

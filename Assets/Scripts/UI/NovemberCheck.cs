@@ -32,7 +32,7 @@ namespace Breach.UI
             for(int scenario=0;scenario<4;scenario++){
                 int phase=scenario%2;bool buffer=scenario>=2;
                 c.State.Attacker=phase==0?1:0;c.State.Phase=phase;c.State.Hands[1].Clear();c.State.Hands[1].Add(buffer?Card.Buffer:Card.Inject);c.State.Hidden.Clear();
-                for(int i=0;i<3;i++){c.State.Health[0,i]=c.State.Health[1,i]=1;c.State.Power[0,i]=c.State.Power[1,i]=0;c.State.Rungs[i]=-1;}
+                for(int i=0;i<3;i++){c.State.Health[0,i]=c.State.Health[1,i]=1;c.State.Power[0,i]=c.State.Power[1,i]=0;c.State.Rungs[i]=-1;c.State.RungRiders[i]=-1;}
                 Private("CapturePublic");c.Render();yield return null;
                 bool done=false;StartCoroutine(Run((IEnumerator)Private("Play",1,0,0),()=>done=true));
                 yield return Await(()=>c.feedback.Phase=="move","enemy move");if(failed)yield break;

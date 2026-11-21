@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -7,8 +8,10 @@ namespace Breach.UI {
  // Circuit pattern from _도구/회로무늬_생성.py (Resources/Circuit_*.txt), drawn as one mesh.
  // Coordinates are 1920 x 1080 screen pixels, y down. The parent rect must sit at (0,0).
  public sealed class CircuitData {
-  public sealed class Trace { public Vector2[] Points; public float Width, Length; public bool ToBoard; }
+  public sealed class Trace { public Vector2[] Points; public float Width, Length; public bool ToBoard; public string Group; }
   public readonly List<Trace> Traces = new List<Trace>(); public readonly List<Rect> Pads = new List<Rect>(), Chips = new List<Rect>(); public readonly List<Vector3> Vias = new List<Vector3>();
+  // One comet per board-bound bundle: the middle trace of each bundle.
+  public readonly List<Trace> Comets = new List<Trace>();
   static readonly Dictionary<string, CircuitData> cache = new Dictionary<string, CircuitData>();
   static float F(string s) { return float.Parse(s, CultureInfo.InvariantCulture); }
   public static CircuitData Load(string name) {
@@ -16,11 +19,12 @@ namespace Breach.UI {
    var data = new CircuitData(); var asset = Resources.Load<TextAsset>(name); cache[name] = data; if (!asset) { Debug.LogWarning("Circuit data missing: " + name); return data; }
    foreach (var raw in asset.text.Split('\n')) {
     var line = raw.Trim(); if (line.Length == 0 || line[0] == '#') continue; var p = line.Split(' ');
-    if (p[0] == "T") { var t = new Trace { ToBoard = p[1] == "1", Width = F(p[2]) }; var pts = new List<Vector2>(); for (int i = 3; i < p.Length; i++) { var xy = p[i].Split(','); pts.Add(new Vector2(F(xy[0]), F(xy[1]))); } t.Points = pts.ToArray(); for (int i = 1; i < pts.Count; i++) t.Length += Vector2.Distance(pts[i - 1], pts[i]); data.Traces.Add(t); }
+    if (p[0] == "T") { var t = new Trace { ToBoard = p[1] == "1", Width = F(p[2]), Group = p[3] }; var pts = new List<Vector2>(); for (int i = 4; i < p.Length; i++) { var xy = p[i].Split(','); pts.Add(new Vector2(F(xy[0]), F(xy[1]))); } t.Points = pts.ToArray(); for (int i = 1; i < pts.Count; i++) t.Length += Vector2.Distance(pts[i - 1], pts[i]); data.Traces.Add(t); }
     else if (p[0] == "P") data.Pads.Add(new Rect(F(p[1]), F(p[2]), F(p[3]), F(p[4])));
     else if (p[0] == "C") data.Chips.Add(new Rect(F(p[1]), F(p[2]), F(p[3]), F(p[4])));
     else if (p[0] == "V") data.Vias.Add(new Vector3(F(p[1]), F(p[2]), F(p[3])));
    }
+   foreach (var g in data.Traces.Where(t => t.ToBoard).GroupBy(t => t.Group)) { var list = g.ToList(); data.Comets.Add(list[list.Count / 2]); }
    return data;
   }
   public static Vector2 Along(Trace t, float distance) {
@@ -36,8 +40,10 @@ namespace Breach.UI {
   // Static pattern: Reveal draws each trace from its first point (screen edge) toward its end (UI part / board).
   public float Reveal = 1, Glow = .4f;
   // Signal mode: heads run along board-bound traces only; time in seconds, -1 = off.
-  public bool Signals; public float SignalTime = -1; public const float SignalSpan = .6f, SignalTail = 70;
-  public static float Delay(int index) { return .3f * ((index * 37) % 11) / 10f; }
+  public bool Signals; public float SignalTime = -1; public const float SignalSpan = .75f, SignalTail = 130, SignalLength = 1.25f;
+  public static float Delay(int index) { return .45f * ((index * 37) % 11) / 10f; }
+  static float Ease3(float v) { v = Mathf.Clamp01(v); return 1 - (1 - v) * (1 - v) * (1 - v); }
+  static float Ease(float v) { v = Mathf.Clamp01(v); return 1 - (1 - v) * (1 - v); }
   static void Quad(VertexHelper vh, Vector2 a, Vector2 b, float width, Color c) {
    var d = b - a; if (d.sqrMagnitude < .0001f) return; var n = new Vector2(-d.y, d.x).normalized * width / 2; int s = vh.currentVertCount;
    vh.AddVert(new Vector3(a.x + n.x, -(a.y + n.y)), c, Vector2.zero); vh.AddVert(new Vector3(b.x + n.x, -(b.y + n.y)), c, Vector2.zero);
@@ -53,17 +59,23 @@ namespace Breach.UI {
   protected override void OnPopulateMesh(VertexHelper vh) {
    vh.Clear(); if (Data == null) return; Color ink = color, halo = new Color(color.r, color.g, color.b, color.a * Glow * .35f);
    if (Signals) {
-    if (SignalTime < 0) return; int index = 0; var head = new Color(.94f, 1, 1, color.a); var tail = new Color(.62f, .95f, 1, color.a * .95f);
-    foreach (var t in Data.Traces) {
-     if (!t.ToBoard) continue; float u = (SignalTime - Delay(index++)) / SignalSpan; if (u < 0) continue; float s = Mathf.Min(1, u) * t.Length;
-     if (u < 1) { Partial(vh, t, s - SignalTail, s, 6, new Color(tail.r, tail.g, tail.b, tail.a * .25f)); Partial(vh, t, s - SignalTail, s, 2.4f, tail); var h = CircuitData.Along(t, s); Box(vh, new Rect(h.x - 3.4f, h.y - 3.4f, 6.8f, 6.8f), head); }
-     else { float flash = 1 - Mathf.Clamp01((u - 1) * SignalSpan / .3f); if (flash > 0) { var e = t.Points[t.Points.Length - 1]; Box(vh, new Rect(e.x - 4, e.y - 4, 8, 8), new Color(1, 1, 1, flash * color.a)); } }
+    // Comets (2026-11-22 request: "은은하게 회로가 떠있고 회로를 따라 혜성처럼"): a bright head and a
+    // 130 px tail that fades along the trace, one per bundle, staggered; the end pad glows softly on arrival.
+    if (SignalTime < 0) return;
+    for (int index = 0; index < Data.Comets.Count; index++) {
+     var t = Data.Comets[index]; float u = (SignalTime - Delay(index)) / SignalSpan; if (u < 0) continue; float s = Mathf.Min(1, Ease(u)) * t.Length;
+     if (u < 1) {
+      for (int m = 0; m < 10; m++) { float f = 1 - m / 10f, a = color.a * f * f;
+       Partial(vh, t, s - SignalTail * (m + 1) / 10f, s - SignalTail * m / 10f, 6, new Color(.38f, .9f, 1, a * .12f));
+       Partial(vh, t, s - SignalTail * (m + 1) / 10f, s - SignalTail * m / 10f, 1.2f + 1.2f * f, new Color(.62f, .95f, 1, a * .85f)); }
+      var h = CircuitData.Along(t, s); Box(vh, new Rect(h.x - 5, h.y - 5, 10, 10), new Color(.6f, .95f, 1, color.a * .18f)); Box(vh, new Rect(h.x - 2, h.y - 2, 4, 4), new Color(.94f, 1, 1, color.a));
+     } else { float glow = 1 - Mathf.Clamp01((u - 1) * SignalSpan / .35f); if (glow > 0) { var e = t.Points[t.Points.Length - 1]; Box(vh, new Rect(e.x - 4, e.y - 4, 8, 8), new Color(.8f, .98f, 1, glow * color.a * .7f)); } }
     }
     return;
    }
    if (Reveal <= 0) return;
-   foreach (var t in Data.Traces) { float to = t.Length * Reveal; if (Glow > 0) Partial(vh, t, 0, to, t.Width + 3, halo); Partial(vh, t, 0, to, t.Width, ink); }
-   float tip = Mathf.InverseLerp(.7f, 1, Reveal); if (tip <= 0) return; var padInk = new Color(ink.r, ink.g, ink.b, ink.a * tip);
+   for (int i = 0; i < Data.Traces.Count; i++) { var t = Data.Traces[i]; float to = t.Length * Ease3(Reveal * 1.25f - TitleBBackdrop.Rnd(i) * .25f); if (Glow > 0) Partial(vh, t, 0, to, t.Width + 3, halo); Partial(vh, t, 0, to, t.Width, ink); }
+   float tip = Reveal >= 1 ? 1 : Mathf.Clamp01(Reveal * 1.4f - .3f); if (tip <= 0) return; var padInk = new Color(ink.r, ink.g, ink.b, ink.a * tip);
    foreach (var p in Data.Pads) Box(vh, p, padInk);
    foreach (var v in Data.Vias) Ring(vh, new Vector2(v.x, v.y), v.z, 1.3f, padInk);
    foreach (var c in Data.Chips) Outline(vh, c, 1.6f, padInk);

@@ -3,6 +3,7 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Breach.UI {
  // Opt-in fixed presentation fixtures. Never runs during normal play.
@@ -17,7 +18,7 @@ namespace Breach.UI {
    var fixedHead=BattleController.Find(c.backgrounds[2].transform,"Source_64_438") as RectTransform;Vector2 headOrigin=fixedHead.anchoredPosition;
    for(int scenario=0;scenario<6;scenario++){
     c.State.Attacker=0;c.State.Phase=0;c.State.Winner=-1;c.State.Hidden.Clear();Array.Clear(c.State.Power,0,6);Array.Clear(c.State.Walls,0,3);Array.Clear(c.State.Pierce,0,6);
-    c.State.Hands[0].Clear();c.State.Hands[1].Clear();for(int i=0;i<3;i++){c.State.Health[0,i]=c.State.Health[1,i]=1;c.State.Rungs[i]=-1;}
+    c.State.Hands[0].Clear();c.State.Hands[1].Clear();for(int i=0;i<3;i++){c.State.Health[0,i]=c.State.Health[1,i]=1;c.State.Rungs[i]=-1;c.State.RungRiders[i]=-1;}
     c.State.Power[0,1]=scenario==1?2:1;
     if(scenario==0){c.State.Rungs[2]=1;c.State.Rungs[0]=0;}
     if(scenario==1)c.State.Power[1,1]=1;
@@ -50,12 +51,12 @@ namespace Breach.UI {
    if(signal.SignalTime>=0){Fail("Activation signals left running");yield break;}
    bool changed=false,turnDone=false;var crt=FindFirstObjectByType<CrtOverlay>();StartCoroutine(Run(c.feedback.Turn(1,1,0,()=>changed=true),()=>turnDone=true));
    yield return Await(()=>c.feedback.Phase=="turn"&&c.feedback.Progress>.52f,"VHS peak");if(failed)yield break;yield return Shot("vhs-peak");
-   if(!changed||!crt||crt.Burst<.9f){Fail("VHS peak or turn callback missing");yield break;}yield return Await(()=>turnDone,"VHS recovery");if(failed)yield break;yield return null;yield return Shot("vhs-recovered");
+   var split=c.fx.GetComponentsInChildren<RawImage>().Where(x=>x.name=="찢김 띠 0"||x.name=="붉은 겹").ToArray();if(!changed||split.Length<2||split.All(x=>x.color.a<.1f)){Fail("VHS peak or turn callback missing");yield break;}yield return Await(()=>turnDone,"VHS recovery");if(failed)yield break;yield return null;yield return Shot("vhs-recovered");
    if(crt.Burst!=0){Fail("VHS remained active");yield break;}
    File.WriteAllText(Path.Combine(dir,"week9-result.txt"),"PASS: 6 fixed attack fixtures (hit, partial cancel, wall, full cancel, pierce, offline), camera focus and restore, fixed HUD and headings, horizontal bloom, firewall open-to-lock, activation signals along board-bound circuit bundles, VHS peak callback and recovery");Application.Quit(0);
   }
   IEnumerator Run(IEnumerator routine,Action done){yield return routine;done();}
-  IEnumerator Await(Func<bool> test,string label){float end=Time.realtimeSinceStartup+20;while(!test()&&Time.realtimeSinceStartup<end)yield return null;if(!test())Fail("Timeout "+label);}
+  IEnumerator Await(Func<bool> test,string label){float end=Time.realtimeSinceStartup+20;while(!test()&&Time.realtimeSinceStartup<end)yield return null;if(!test())Fail("Timeout "+label+" (presentation "+c.presentation.Phase+" "+c.presentation.Progress.ToString("0.00")+", card "+c.feedback.Phase+")");}
   IEnumerator Shot(string name){
    // PNG encoding blocks the main thread. Slow only the capture interval so the next short phase is not skipped.
    float attackSpeed=c.animationSpeed,cardSpeed=c.feedback.speed;c.animationSpeed=c.feedback.speed=.1f;

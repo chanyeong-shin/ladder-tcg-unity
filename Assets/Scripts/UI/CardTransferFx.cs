@@ -47,31 +47,46 @@ namespace Breach.UI {
    }
    Phase="dock";for(float t=0;t<1;t+=Delta/.25f){Progress=t;clamp.color=Color.Lerp(Color.white,color,t);yield return null;}
 
-   // Scan (2026-11-21 selection): a light bar sweeps the docked card top to bottom in 0.8 s and the part it
-   // has passed becomes 7 circuit lines that gather at the socket exit. The hold circuit fades in the first 60%.
-   var hold=GetComponent<CardHoldFx>();if(hold)hold.Hide(.48f/Mathf.Max(.1f,Rate));
+   // Scan (HTML tab 4 "스캔 → 회로선"): a light bar sweeps the docked card in 0.8 s and the part it has passed
+   // becomes 7 circuit lines with a jog and an end pad. The circuit stays faintly on screen (2026-11-22 request).
+   var hold=GetComponent<CardHoldFx>();if(hold)hold.Show(hold.Visible);
    chip.type=Image.Type.Filled;chip.fillMethod=Image.FillMethod.Vertical;chip.fillOrigin=(int)Image.OriginVertical.Bottom;
-   var barGlow=Ui.Box("스캔 빛 번짐",root,dock.x-16,dock.y-8,dock.width+32,16,new Color(color.r,color.g,color.b,.35f));
-   var bar=Ui.Box("스캔 빛 막대",root,dock.x-10,dock.y-1.5f,dock.width+20,3,Color.white);
-   var lines=new List<Shape>();
-   for(int k=0;k<7;k++){float x=dock.x+(k+.5f)*dock.width/7;var line=Ui.Line("스캔 회로선",root,new Vector2(x,dock.y),new Vector2(x,dock.yMax),new Color(color.r,color.g,color.b,.9f),1.6f);line.rectTransform.sizeDelta=new Vector2(1,1.6f);lines.Add(line);}
-   Phase="fragment";
-   for(float t=0;t<1;t+=Delta/.8f){Progress=t;float y=dock.y+dock.height*t;chip.fillAmount=1-t;At(bar.rectTransform,new Vector2(dock.x-10,y-1.5f));At(barGlow.rectTransform,new Vector2(dock.x-16,y-8));
-    foreach(var line in lines)line.rectTransform.sizeDelta=new Vector2(Mathf.Max(1,y-dock.y),1.6f);yield return null;}
-   chip.gameObject.SetActive(false);bar.gameObject.SetActive(false);barGlow.gameObject.SetActive(false);
-   foreach(var line in lines)line.rectTransform.sizeDelta=new Vector2(dock.height,1.6f);
-   var exit=Routes[1][0];var gather=new List<Shape>();
-   for(int k=0;k<7;k++){float x=dock.x+(k+.5f)*dock.width/7;gather.Add(Ui.Line("회로선 모임",root,new Vector2(x,dock.yMax),exit+new Vector2(0,(k-3)*3),new Color(color.r,color.g,color.b,.9f),1.6f));}
-   var lengths=gather.Select(g=>g.rectTransform.sizeDelta.x).ToArray();
-   for(float t=0;t<1;t+=Delta/.25f){for(int k=0;k<7;k++)gather[k].rectTransform.sizeDelta=new Vector2(lengths[k]*Ease(t),1.6f);yield return null;}
-   for(int lane=0;lane<3;lane++)for(int seg=1;seg<Routes[lane].Length;seg++){
-    Ui.Line("회로 번짐",root,Routes[lane][seg-1],Routes[lane][seg],new Color(color.r,color.g,color.b,.12f),lane==1?15:9);
-    Ui.Line("회로 중심",root,Routes[lane][seg-1],Routes[lane][seg],new Color(color.r,color.g,color.b,.7f),lane==1?6:2);
+   var barGlow=Ui.Box("스캔 빛 번짐",root,dock.x-16,dock.y-8,dock.width+32,16,new Color(.91f,.98f,1,.3f));
+   var bar=Ui.Box("스캔 빛 막대",root,dock.x-8,dock.y-2,dock.width+16,4,new Color(.91f,.98f,1));
+   float top=dock.y+8;var lineInk=new Color(.498f,.914f,1);var lines=new List<Shape[]>();var xs=new float[7];
+   for(int k=0;k<7;k++){xs[k]=dock.x+14+k*(dock.width-28)/6;float jog=k%2==1?12:-12;
+    lines.Add(new[]{Ui.Line("스캔 회로선 위",root,new Vector2(xs[k],top),new Vector2(xs[k],top+1),lineInk,1.6f),Ui.Line("스캔 회로선 꺾임",root,new Vector2(xs[k],top),new Vector2(xs[k]+jog,top),lineInk,1.6f),Ui.Line("스캔 회로선 아래",root,new Vector2(xs[k]+jog,top),new Vector2(xs[k]+jog,top+1),lineInk,1.6f),Ui.Box("스캔 회로 패드",root,xs[k]+jog-3,top-3,6,6,Ui.Cyan)});}
+   void Trace(int k,float by,float drain){
+    float jog=k%2==1?12:-12,mid=(top+by)/2,x=xs[k];var seg=lines[k];
+    // drain: 0 = whole line, 1 = everything pulled into the end pad (absorbed).
+    float from=Mathf.Lerp(top,by,drain);
+    float upper0=Mathf.Min(from,mid);At(seg[0].rectTransform,new Vector2(x,upper0));seg[0].rectTransform.localRotation=Quaternion.Euler(0,0,-90);seg[0].rectTransform.sizeDelta=new Vector2(Mathf.Max(0,mid-upper0),1.6f);
+    At(seg[1].rectTransform,new Vector2(Mathf.Min(x,x+jog),mid-.8f));seg[1].rectTransform.localRotation=Quaternion.identity;seg[1].rectTransform.pivot=new Vector2(0,1);seg[1].rectTransform.sizeDelta=new Vector2(from<=mid?12:0,1.6f);
+    float lower0=Mathf.Max(from,mid);At(seg[2].rectTransform,new Vector2(x+jog,lower0));seg[2].rectTransform.localRotation=Quaternion.Euler(0,0,-90);seg[2].rectTransform.sizeDelta=new Vector2(Mathf.Max(0,by-lower0),1.6f);
+    At(seg[3].rectTransform,new Vector2(x+jog-3,by-3));
    }
-   // Activation, 0.9 s: signals run along the board-bound circuit bundles and flash the board-edge pads.
+   Phase="fragment";
+   for(float t=0;t<1;t+=Delta/.8f){Progress=t;float y=dock.y+dock.height*t;chip.fillAmount=1-t;At(bar.rectTransform,new Vector2(dock.x-8,y-2));At(barGlow.rectTransform,new Vector2(dock.x-16,y-8));
+    for(int k=0;k<7;k++){bool on=y>top;foreach(var g in lines[k])g.gameObject.SetActive(on);if(on)Trace(k,y,0);}yield return null;}
+   chip.gameObject.SetActive(false);bar.gameObject.SetActive(false);barGlow.gameObject.SetActive(false);
+   // Absorption: each card line drains into its end pad, the pads slide to the socket exit,
+   // and three comets leave the exit along the socket-to-board routes.
+   float bottom=dock.yMax;var exit=Routes[1][0];var routeInk=new Color(color.r,color.g,color.b,.18f);
+   for(int lane=0;lane<3;lane++)for(int seg=1;seg<Routes[lane].Length;seg++)Ui.Line("소켓-판 회로",root,Routes[lane][seg-1],Routes[lane][seg],routeInk,lane==1?3:1.5f);
+   var comets=new List<Shape>();for(int lane=0;lane<3;lane++)for(int part=0;part<10;part++)comets.Add(Ui.Box("소켓 혜성",root,0,0,1,1,Color.clear));
+   Phase="absorb-card";
+   for(float t=0;t<1;t+=Delta/.7f){Progress=t;float drain=Ease(Mathf.Clamp01(t/.45f)),slide=Ease(Mathf.InverseLerp(.3f,.6f,t));
+    for(int k=0;k<7;k++){Trace(k,bottom,drain);float jog=k%2==1?12:-12;var pad=lines[k][3];Vector2 from=new Vector2(xs[k]+jog,bottom),to=exit+new Vector2(0,(k-3)*3);At(pad.rectTransform,Vector2.Lerp(from,to,slide)-new Vector2(3,3));pad.color=new Color(Ui.Cyan.r,Ui.Cyan.g,Ui.Cyan.b,1-Mathf.InverseLerp(.55f,.7f,t));}
+    int index=0;for(int lane=0;lane<3;lane++){float head=Mathf.InverseLerp(.5f+lane*.04f,1,t);
+     for(int part=0;part<10;part++){var piece=comets[index++];float h1=head-part*.035f,h0=h1-.035f;bool visible=h1>0&&h0<1;piece.gameObject.SetActive(visible);if(!visible)continue;
+      Vector2 pa=Along(Routes[lane],Mathf.Clamp01(h0)),pb=Along(Routes[lane],Mathf.Clamp01(h1)),dv=pb-pa;At(piece.rectTransform,pa);piece.rectTransform.pivot=new Vector2(0,.5f);piece.rectTransform.localRotation=Quaternion.Euler(0,0,-Mathf.Atan2(dv.y,dv.x)*Mathf.Rad2Deg);
+      float f=1-part/10f;piece.rectTransform.sizeDelta=new Vector2(Mathf.Max(1,dv.magnitude),1.2f+1.6f*f);piece.color=part==0?new Color(.94f,1,1,1):new Color(.62f,.95f,1,.8f*f*f);}}
+    yield return null;}
+   // Activation: the circuit stays faint and comets run along it toward the board.
    Phase="absorb";var fade=root.GetComponentsInChildren<Shape>(true).ToArray();var start=fade.Select(f=>f.color.a).ToArray();
    System.Action<float> step=p=>{Progress=p;for(int i=0;i<fade.Length;i++)if(fade[i]){var c=fade[i].color;c.a=start[i]*(1-p);fade[i].color=c;}};
-   if(hold)yield return hold.Activate(()=>Delta,step);else for(float t=0;t<.9f;t+=Delta){step(t/.9f);yield return null;}
+   if(hold)yield return hold.Activate(()=>Delta,step);else for(float t=0;t<CircuitGraphic.SignalLength;t+=Delta){step(t/CircuitGraphic.SignalLength);yield return null;}
+   if(hold)hold.Hide(.4f);
    Destroy(root.gameObject);
    Phase="idle";Progress=0;
   }
@@ -93,27 +108,6 @@ namespace Breach.UI {
    Destroy(root.gameObject);
   }
   static float Hash(int n){n=(n<<13)^n;return ((n*(n*n*15731+789221)+1376312589)&0x7fffffff)/2147483647f;}
-  // Event light (2026-11-21 selection): the whole path plus its arrival server. The path spreads from its
-  // start in 0.45 s, blinks twice (on 0.10, 15% 0.08, on 0.10), then fades from 90% over 1.6 s.
-  // The arrival ring grows 28 -> 52 px in 0.5 s, 0.55 s after the start. Runs beside the card result.
-  public IEnumerator EventLight(Transform parent,List<List<Vector2>> routes,Color color,bool rings=true){
-   var root=Ui.Rect("이벤트 빛",parent,0,0,1920,1080);var shapes=new List<Shape>();var from=new List<float>();var lengths=new List<float>();var weight=new List<float>();var ends=new List<Shape>();
-   Color core=Color.Lerp(color,Color.white,.55f);
-   foreach(var pts in routes){float acc=0;
-    for(int i=1;i<pts.Count;i++){float len=Vector2.Distance(pts[i-1],pts[i]);if(len<.5f)continue;
-     foreach(var (w,a) in new[]{(30f,.2f),(10f,.35f),(3f,1f)}){var line=Ui.Line("경로 빛",root,pts[i-1],pts[i],new Color(color.r,color.g,color.b,0),w);if(w==3)line.color=new Color(core.r,core.g,core.b,0);shapes.Add(line);from.Add(acc);lengths.Add(len);weight.Add(a);}
-     acc+=len;}
-    if(rings){var end=pts[pts.Count-1];ends.Add(Ui.Box("도착 서버 고리",root,end.x-28,end.y-28,56,56,new Color(color.r,color.g,color.b,0),false,3,32));}
-   }
-   float total=routes.Count==0?0:routes.Max(r=>{float l=0;for(int i=1;i<r.Count;i++)l+=Vector2.Distance(r[i-1],r[i]);return l;});
-   for(float t=0;t<2.33f;t+=Delta){if(!root)yield break;
-    float spread=total*Ease(Mathf.Clamp01(t/.45f));
-    float a=t<.45f?1:t<.55f?1:t<.63f?.15f:t<.73f?1:.9f*(1-Mathf.Clamp01((t-.73f)/1.6f));
-    for(int i=0;i<shapes.Count;i++){var r=shapes[i].rectTransform;r.sizeDelta=new Vector2(Mathf.Clamp(spread-from[i],0,lengths[i]),r.sizeDelta.y);var c=shapes[i].color;c.a=a*weight[i];shapes[i].color=c;}
-    float u=Mathf.Clamp01((t-.55f)/.5f);foreach(var ring in ends){float size=2*Mathf.Lerp(28,52,Ease(u));var rr=ring.rectTransform;var center=new Vector2(rr.anchoredPosition.x+rr.sizeDelta.x/2,-rr.anchoredPosition.y+rr.sizeDelta.y/2);rr.sizeDelta=Vector2.one*size;At(rr,center-Vector2.one*size/2);ring.color=new Color(color.r,color.g,color.b,t<.55f?0:1-u);}
-    yield return null;}
-   if(root)Destroy(root.gameObject);
-  }
   public IEnumerator Applied(Card card,int owner,int target,bool connected){
    var controller=GetComponent<BattleController>();
    bool onBoard=card!=Card.Buffer&&card!=Card.Overflow;
@@ -126,12 +120,26 @@ namespace Breach.UI {
     wall=gates[0];mark=Ui.Box("방화벽 점등",root,point.x-45,point.y-29,90,58,Color.clear,false,3);}
    else {point=new Vector2(982,873);message="손패 보충";mark=Ui.Line("손패 보충",root,new Vector2(742,866),new Vector2(1222,866),color,3);}
    if(controller&&controller.State!=null&&controller.presentation){
-    var routes=new List<List<Vector2>>();Color lightColor=color;
-    if(card==Card.Inject||card==Card.ZeroDay)routes.Add(BattleController.Points(controller.State.Route(owner,target)));
-    else if(card==Card.Reroute&&connected){int slot=Battle.Slot(target),row=slot/2,edge=slot%2;
-     for(int who=0;who<2;who++)for(int lane=0;lane<3;lane++)if(controller.State.Power[who,lane]>0){var packet=controller.State.Route(who,lane);if(packet.Cells.Any(cell=>cell.Row==row&&(cell.Lane==edge||cell.Lane==edge+1)))routes.Add(BattleController.Points(packet));}
-     if(routes.Count==0)routes.Add(new List<Vector2>{new Vector2(BattleController.LaneX[edge],BattleController.RowY[row]),new Vector2(BattleController.LaneX[edge+1],BattleController.RowY[row])});}
-    if(routes.Count>0)StartCoroutine(EventLight(controller.presentation.BoardEffect("이벤트 빛"),routes,lightColor,card!=Card.Reroute||routes.Count>0&&routes[0].Count>2));
+    var st=controller.State;var plan=new EventFx.Plan();
+    if(card==Card.Inject||card==Card.ZeroDay){
+     // load: ring at the channel start (10 -> 34), the packet's path from 0.15 s, its arrival server ring from 0.6 s
+     var pts=BattleController.Points(st.Route(owner,target));Vector2 startPoint=new Vector2(BattleController.LaneX[target],owner==0?777-26*EventFx.S:201+26*EventFx.S);
+     plan.Rings.Add((startPoint,EventFx.Side(owner),10*EventFx.S,34*EventFx.S,0));plan.Halos.Add((pts,EventFx.Side(owner),.15f));plan.Rings.Add((pts[pts.Count-1],EventFx.Side(owner),28,52,.6f));
+    }else if(card==Card.Reroute){
+     // link / unlink: the rung flashes (white / #ff8b9b), its two contacts ring (14 -> 46), and only the paths whose
+     // arrival changed because of it glow in their side's color, each with its arrival server ring from 0.55 s.
+     int slot=Battle.Slot(target),row=slot/2,edge=slot%2;var after=new List<Packet>();var before=new List<Packet>();
+     for(int who=0;who<2;who++)for(int lane=0;lane<3;lane++)after.Add(st.Route(who,lane));
+     int keepRung=st.Rungs[row],keepRider=st.RungRiders[row];
+     if(connected)st.Rungs[row]=-1;else{st.Rungs[row]=edge;st.RungRiders[row]=st.LastRemovedRider;}
+     for(int who=0;who<2;who++)for(int lane=0;lane<3;lane++)before.Add(st.Route(who,lane));
+     st.Rungs[row]=keepRung;st.RungRiders[row]=keepRider;
+     Vector2 x1=new Vector2(BattleController.LaneX[edge],BattleController.RowY[row]),x2=new Vector2(BattleController.LaneX[edge+1],BattleController.RowY[row]);
+     plan.Flashes.Add((x1,x2,connected?Color.white:new Color(1,.545f,.608f)));plan.Rings.Add((x1,EventFx.Core,14*EventFx.S,46*EventFx.S,0));plan.Rings.Add((x2,EventFx.Core,14*EventFx.S,46*EventFx.S,0));
+     int n=0;for(int i=0;i<after.Count;i++)if(after[i].End!=before[i].End){var pts=BattleController.Points(after[i]);plan.Halos.Add((pts,EventFx.Side(after[i].Owner),.12f+n*.06f));plan.Rings.Add((pts[pts.Count-1],EventFx.Side(after[i].Owner),28,52,.55f));n++;}
+     mark.color=Color.clear;mark.gameObject.SetActive(false);
+    }
+    if(!plan.Empty)controller.presentation.StartCoroutine(EventFx.Run(controller.presentation.BoardEffect("이벤트 빛"),plan,()=>Delta));
    }
    var label=Ui.Text("적용 결과",root,point.x-110,point.y-(wall?85:63),220,30,message,font,19,color);label.alignment=TextAlignmentOptions.Center;
    Phase="applied";for(float t=0;t<1;t+=Delta/.5f){Progress=t;float a=1-t*t;if(wall){float close=Ease(Mathf.InverseLerp(.22f,.52f,t));foreach(var gate in gates)CombatPresentation.CloseFirewall(gate,close);if(t<.52f)a=0;}mark.color=new Color(color.r,color.g,color.b,a);label.color=new Color(color.r,color.g,color.b,a);yield return null;}
@@ -147,37 +155,46 @@ namespace Breach.UI {
    RenderTexture.active=old;camera.targetTexture=null;canvas.renderMode=mode;canvas.worldCamera=cam;canvas.planeDistance=plane;rt.Release();Destroy(rt);return image;
   }
   static RawImage Layer(Transform parent,string name,Texture texture,Color color){var r=Ui.Rect(name,parent,0,0,1920,1080);var image=r.gameObject.AddComponent<RawImage>();image.texture=texture;image.color=color;image.raycastTarget=false;return image;}
-  // VHS turn change (2026-11-21 selection): RGB split + horizontal tearing, 1.1 s, strongest at the middle
-  // where the screen changes. Then a center band holds the big turn name and a Korean line for 1.2 s.
+  static Material screenBlend;
+  static Material ScreenBlend {get{if(!screenBlend){var shader=Resources.Load<Shader>("UIScreenBlend");if(shader)screenBlend=new Material(shader);}return screenBlend;}}
+  // VHS turn change — port of HTML tab 5 (sec-vhs, vfx "rgb", length 1.1 s). The HTML stage is 1280 x 720; the game is
+  // 1920 x 1080, so offsets and the center band scale by 1.5.
+  //  k = 1 - |p - 0.5| * 2; red copy at -40k, cyan copy at +40k (screen blend, opacity 0.75k);
+  //  8 slices: top rnd(tick,i,1)*90 %, height 3 + rnd(tick,i,2)*12 %, shifted (rnd(tick,i,3)-0.5)*160k, shown while k > 0.15;
+  //  whole stage shakes on x only by (rnd(tick,9)-0.5)*10k; tick = floor(u*30). At p = 0.5 the next screen, already
+  //  carrying the center band, replaces the copies. After the change the band holds 1.2 s and fades in 0.4 s.
   public IEnumerator Turn(int phase,int actor,int attacker,System.Action atPeak=null){
-   var root=Root("턴 전환");root.SetAsLastSibling();Color color=phase==2?Ui.Gold:actor==0?Ui.Cyan:Ui.Red;
-   string title=phase==2?"RESOLVE":phase==0?"ATTACK":"DEFENSE";
-   string detail=phase==2?"동시 발동 · 장전된 패킷이 한꺼번에 날아갑니다":(actor==0?"내 ":"상대 ")+(phase==0?"공격 턴 · ":"방어 턴 · ")+(phase==0?(actor==0?"패킷을 장전하고 길을 바꾸세요":"상대가 패킷을 장전합니다"):(actor==0?"막을 길을 고르세요":"상대가 막을 길을 고릅니다"));
+   var root=Root("턴 전환");root.SetAsLastSibling();Color color=phase==2?new Color(1,.82f,.4f):actor==0?new Color(.22f,.851f,1):new Color(1,.294f,.4f);
+   string title=phase==2?"RESOLVE":phase==0?"ATTACK":"DEFEND";
+   string detail=(phase==2?"동시 발동":phase==0?"공격 턴":"방어 턴")+" · "+(phase==2?"양쪽":actor==0?"나":"상대");
    var header=Ui.Box("현재 단계 점등",root,161+544*phase,23,536,36,Color.clear,false,2);
-   var crt=FindFirstObjectByType<CrtOverlay>();bool changed=false;bool fast=Rate>=BattleController.SkipSpeed;
+   var crt=FindFirstObjectByType<CrtOverlay>();if(crt)crt.SetBurst(0);bool changed=false;bool fast=Rate>=BattleController.SkipSpeed;
    var vhs=Ui.Rect("VHS 화면 겹",root,0,0,1920,1080);Texture2D shot=null;var layers=new List<RawImage>();
-   if(!fast)shot=Grab();if(shot){
-    layers.Add(Layer(vhs,"원본",shot,Color.white));layers.Add(Layer(vhs,"청록 겹",shot,new Color(0,1,1,0)));layers.Add(Layer(vhs,"붉은 겹",shot,new Color(1,0,.25f,0)));
+   var band=Ui.Rect("턴 설명 띠",root,0,0,1920,1080);band.gameObject.SetActive(false);
+   var bandBox=Ui.Box("띠 바탕",band,0,300*1.5f,1920,110*1.5f,new Color(.02f,.031f,.051f,.8f));
+   // SVG text baselines y=372 (54 px) and y=398 (18 px): centers at about baseline - 0.35 em, x1.5.
+   var big=Ui.Text("턴 이름",band,0,(372-.35f*54)*1.5f-45,1920,90,title,font,54*1.5f,color);big.alignment=TextAlignmentOptions.Center;var host2=GetComponent<BattleController>();if(host2&&host2.titleFont)big.font=host2.titleFont;big.fontStyle=FontStyles.Bold;big.characterSpacing=6*100/54f;
+   var small=Ui.Text("턴 설명",band,0,(398-.35f*18)*1.5f-17,1920,34,detail,font,18*1.5f,new Color(.769f,.898f,.937f));small.alignment=TextAlignmentOptions.Center;
+   if(!fast)shot=Grab();
+   if(shot){var mat=ScreenBlend;
+    layers.Add(Layer(vhs,"붉은 겹",shot,new Color(1,.25f,.3f,0)));layers.Add(Layer(vhs,"청록 겹",shot,new Color(.2f,.9f,1,0)));if(mat){layers[0].material=mat;layers[1].material=mat;}
     for(int i=0;i<8;i++)layers.Add(Layer(vhs,"찢김 띠 "+i,shot,new Color(1,1,1,0)));}
-   Phase="turn";
-   for(float t=0;t<1;t+=Delta/1.1f){Progress=t;float k=Mathf.Sin(Mathf.PI*Mathf.Clamp01(t));if(crt)crt.SetBurst(k);
-    if(!changed&&t>=.5f){changed=true;atPeak?.Invoke();
-     if(shot){vhs.gameObject.SetActive(false);header.gameObject.SetActive(false);if(crt)crt.SetBurst(0);var next=Grab();if(crt)crt.SetBurst(k);vhs.gameObject.SetActive(true);header.gameObject.SetActive(true);if(next){Destroy(shot);shot=next;foreach(var l in layers)l.texture=shot;}}}
-    if(shot){int tick=Mathf.FloorToInt(Time.unscaledTime*30);
-     At(layers[1].rectTransform,new Vector2(-40*k,0));layers[1].color=new Color(0,1,1,.75f*k*.5f);
-     At(layers[2].rectTransform,new Vector2(40*k,0));layers[2].color=new Color(1,0,.25f,.75f*k*.5f);
-     for(int i=0;i<8;i++){var strip=layers[3+i];float h=1080*(.03f+.12f*Hash(tick*13+i)),y=(1080-h)*Hash(tick*7+i*31),dx=(Hash(tick*5+i*17)-.5f)*160*k;
-      At(strip.rectTransform,new Vector2(dx,y));strip.rectTransform.sizeDelta=new Vector2(1920,h);strip.uvRect=new Rect(0,1-(y+h)/1080,1,h/1080);strip.color=new Color(1,1,1,k>.05f?1:0);}
-     vhs.anchoredPosition=new Vector2((Hash(tick)-.5f)*10*k,(Hash(tick+1)-.5f)*10*k);}
-    float a=changed?Ease(Mathf.InverseLerp(.5f,.75f,t)):0;header.color=new Color(color.r,color.g,color.b,a);yield return null;
+   Phase="turn";float started=0;
+   for(float t=0;t<1;t+=Delta/1.1f){Progress=t;float k=1-Mathf.Abs(Mathf.Clamp01(t)-.5f)*2;started+=Delta;
+    if(!changed&&t>=.5f){changed=true;atPeak?.Invoke();band.gameObject.SetActive(true);header.color=color;
+     if(shot){vhs.gameObject.SetActive(false);var next=Grab();vhs.gameObject.SetActive(true);if(next){Destroy(shot);shot=next;foreach(var l in layers)l.texture=shot;}}}
+    if(shot){int tick=Mathf.FloorToInt(started*30);
+     At(layers[0].rectTransform,new Vector2(-40*1.5f*k,0));layers[0].color=new Color(1,.25f,.3f,.75f*k*.8f);
+     At(layers[1].rectTransform,new Vector2(40*1.5f*k,0));layers[1].color=new Color(.2f,.9f,1,.75f*k*.8f);
+     for(int i=0;i<8;i++){var strip=layers[2+i];float y0=TitleBBackdrop.Rnd(tick,i,1)*.9f,h=.03f+TitleBBackdrop.Rnd(tick,i,2)*.12f;h=Mathf.Min(h,1-y0);
+      At(strip.rectTransform,new Vector2((TitleBBackdrop.Rnd(tick,i,3)-.5f)*160*1.5f*k,y0*1080));strip.rectTransform.sizeDelta=new Vector2(1920,h*1080);strip.uvRect=new Rect(0,1-y0-h,1,h);strip.color=new Color(1,1,1,k>.15f?1:0);}
+     vhs.anchoredPosition=new Vector2((TitleBBackdrop.Rnd(tick,9)-.5f)*10*1.5f*k,0);}
+    yield return null;
    }
-   if(!changed)atPeak?.Invoke();if(crt)crt.SetBurst(0);Destroy(vhs.gameObject);if(shot)Destroy(shot);
-   var band=Ui.Box("턴 설명 띠",root,0,540-55,1920,110,new Color(.02f,.03f,.05f,.8f));
-   var big=Ui.Text("턴 이름",root,0,540-52,1920,64,title,font,54,color);big.alignment=TextAlignmentOptions.Center;
-   var small=Ui.Text("턴 설명",root,0,540+17,1920,28,detail,font,18,new Color(.82f,.9f,.94f));small.alignment=TextAlignmentOptions.Center;
-   header.color=color;Phase="turn-hold";
+   if(!changed){atPeak?.Invoke();band.gameObject.SetActive(true);}
+   Destroy(vhs.gameObject);if(shot)Destroy(shot);band.gameObject.SetActive(true);header.color=color;Phase="turn-hold";
    for(float t=0;t<1;t+=Time.unscaledDeltaTime*(Rate>=BattleController.SkipSpeed?BattleController.SkipSpeed:1)/1.2f){Progress=t;yield return null;}
-   for(float t=0;t<1;t+=Time.unscaledDeltaTime*(Rate>=BattleController.SkipSpeed?BattleController.SkipSpeed:1)/.4f){float a=1-t;header.color=big.color=new Color(color.r,color.g,color.b,a);small.color=new Color(.82f,.9f,.94f,a);band.color=new Color(.02f,.03f,.05f,.8f*a);yield return null;}
+   for(float t=0;t<1;t+=Time.unscaledDeltaTime*(Rate>=BattleController.SkipSpeed?BattleController.SkipSpeed:1)/.4f){float a=1-t;header.color=new Color(color.r,color.g,color.b,a);big.color=new Color(color.r,color.g,color.b,a);small.color=new Color(.769f,.898f,.937f,a);bandBox.color=new Color(.02f,.031f,.051f,.8f*a);yield return null;}
    Destroy(root.gameObject);Phase="idle";
   }
   public IEnumerator Impact(Vector2 point,string caption,Color color){var root=Root("패킷 충돌");var ring=Ui.Box("충돌 섬광",root,point.x-22,point.y-22,44,44,color,false,3,6);var label=Ui.Text("충돌 결과",root,point.x-95,point.y-50,190,26,caption,font,17,color);label.alignment=TextAlignmentOptions.Center;for(float t=0;t<1;t+=Delta/.3f){ring.color=label.color=new Color(color.r,color.g,color.b,1-t);float size=44+t*24;At(ring.rectTransform,point-Vector2.one*size/2);ring.rectTransform.sizeDelta=Vector2.one*size;yield return null;}Destroy(root.gameObject);}

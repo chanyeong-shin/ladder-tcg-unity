@@ -91,6 +91,14 @@ namespace Breach.UI
         void Track(RectTransform r) { visuals.Add(r); origins.Add(r.anchoredPosition); }
         public void ResetView() { for (int i = 0; i < visuals.Count; i++) if (visuals[i]) { visuals[i].anchoredPosition = origins[i]; visuals[i].localScale = Vector3.one; } CameraZoom = 1; CameraOffset = Vector2.zero; SetPeripheral(0); ResolutionFocused=false; }
         public RectTransform BoardEffect(string name) => Ui.Rect(name,layer,0,0,1920,1080);
+        // Rung segments of a packet path (two consecutive cells on one row): where along the path it starts, and its ends
+        // inset 16 px from the lanes like the HTML (8 x 2).
+        static List<(float at, int index, Vector2 a, Vector2 b)> RungCrossings(Shot s)
+        {
+            var list = new List<(float, int, Vector2, Vector2)>(); var cells = s.packet.Cells; float total = 0; for (int i = 1; i < s.path.Count; i++) total += Vector2.Distance(s.path[i - 1], s.path[i]);
+            float acc = 0; for (int i = 1; i < cells.Count && i < s.path.Count; i++) { if (cells[i].Row == cells[i - 1].Row && cells[i].Row >= 0 && cells[i].Row <= 2 && cells[i].Lane != cells[i - 1].Lane) { float x0 = Mathf.Min(s.path[i - 1].x, s.path[i].x) + 16, x1 = Mathf.Max(s.path[i - 1].x, s.path[i].x) - 16; list.Add((total > 0 ? acc / total : 0, i, new Vector2(x0, s.path[i].y), new Vector2(x1, s.path[i].y))); } acc += Vector2.Distance(s.path[i - 1], s.path[i]); }
+            return list;
+        }
         public IEnumerator BeginResolution()
         {
             if(ResolutionFocused)yield break;ResolutionFocused=true;Phase="focus";
@@ -335,6 +343,10 @@ namespace Breach.UI
             if (Cancelled(version, root)) yield break;
             foreach (var b in beams) Destroy(b.gameObject); foreach (var g in glows) Destroy(g.gameObject);
             foreach (var s in shots) { StartCoroutine(Flash(root, s.path[0], s.packet.Owner == 0 ? Ui.Cyan : Ui.Red)); c.servers.First(v => v.owner == s.packet.Owner && v.channel == s.packet.Start).Render(report.Before[s.packet.Owner, s.packet.Start], 0); }
+            // HTML tab 2: every launched path glows in its side's color; tab 6: a packet crossing a rung flashes it.
+            var lights = new EventFx.Plan(); foreach (var s in shots) lights.Halos.Add((s.path, EventFx.Side(s.packet.Owner), 0));
+            var lightRoot = BoardEffect("이벤트 빛 - 발동"); StartCoroutine(EventFx.Run(lightRoot, lights, () => Delta));
+            var crossings = shots.Select(s => RungCrossings(s)).ToList(); var crossed = new HashSet<(int, int)>();
             Phase = "flight"; float impulse = 0;
             float duration = FlightSeconds + (clashes.Count > 0 ? StruggleSeconds : 0);
             for (float elapsed = 0; ; elapsed = Mathf.Min(duration, elapsed + Delta))
@@ -349,11 +361,12 @@ namespace Breach.UI
                 foreach (var s in shots)
                 {
                     float p = ShotProgress(s, elapsed); s.position = CardTransferFx.Along(s.path, p);
-                    if (s.clash == null && s.contactEvent && !s.triggered && t >= (s.packet.Blocked?s.split:.52f)) { s.triggered = true;if(s.packet.Blocked){BlockContactCount++;LastBlockContact=s.contact;} impulse = Mathf.Max(impulse, s.piercing ? 0 : s.packet.Blocked ? 4 : 3); StartCoroutine(Impact(root, s.contact, s.packet.Blocked ? "서버 앞 차단" : s.piercing ? "관통" : "공격 상쇄", Ui.Gold, s.packet.Blocked && s.contact.y < 487)); s.number.text = s.packet.Power.ToString(); }
+                    int si = shots.IndexOf(s); foreach (var cross in crossings[si]) if (p >= cross.at && !crossed.Contains((si, cross.index)) && s.packet.Power > 0) { crossed.Add((si, cross.index)); StartCoroutine(BridgeDots.RungFlash(lightRoot, cross.a, cross.b, () => Delta)); }
+                    if (s.clash == null && s.contactEvent && !s.triggered && t >= (s.packet.Blocked?s.split:.52f)) { s.triggered = true;if(!s.packet.Blocked&&!s.piercing){var clashLight=new EventFx.Plan();clashLight.Rings.Add((s.contact,Color.white,8*EventFx.S,60*EventFx.S,0));StartCoroutine(EventFx.Run(lightRoot,clashLight,()=>Delta,1));}if(s.packet.Blocked){BlockContactCount++;LastBlockContact=s.contact;} impulse = Mathf.Max(impulse, s.piercing ? 0 : s.packet.Blocked ? 4 : 3); StartCoroutine(Impact(root, s.contact, s.packet.Blocked ? "서버 앞 차단" : s.piercing ? "관통" : "공격 상쇄", Ui.Gold, s.packet.Blocked && s.contact.y < 487)); s.number.text = s.packet.Power.ToString(); }
                     bool visible = !s.arrived && (s.clash != null ? s.opacity.alpha > .001f : !(s.triggered && s.packet.Power == 0)); s.root.gameObject.SetActive(visible); At(s.root, s.position);
                     for (int n = 0; n < s.trails.Length; n++) { var trail = s.trails[n]; float q = p - .012f * n; trail.gameObject.SetActive(visible && q > 0); Vector2 a = CardTransferFx.Along(s.path, Mathf.Max(0, q - .012f)), b = CardTransferFx.Along(s.path, Mathf.Max(0, q)); var d = b - a; At(trail.rectTransform, a); trail.rectTransform.localRotation = Quaternion.Euler(0, 0, -Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg); trail.rectTransform.sizeDelta = new Vector2(d.magnitude, 3 + (1 - n / 10f) * 4); Color ink = s.packet.Owner == 0 ? Ui.Cyan : Ui.Red; trail.color = new Color(ink.r, ink.g, ink.b, (1 - n / 10f) * .45f * s.opacity.alpha); }
                     if (visible) { focus += s.position; count++; }
-                    if (elapsed >= FlightSeconds + (s.clash != null ? StruggleSeconds : 0) && !s.arrived && s.packet.Power > 0) { s.arrived = true; int target = 1 - s.packet.Owner; if (report.Before[target, s.packet.End] > 0) { impulse = 8; StartCoroutine(Impact(root, s.path.Last(), c.State.Health[target, s.packet.End] == 0 ? "서버 소실" : "착탄", s.packet.Owner == 0 ? Ui.Cyan : Ui.Red)); c.servers.First(v => v.owner == target && v.channel == s.packet.End).Render(c.State.Health[target, s.packet.End], 0); } }
+                    if (elapsed >= FlightSeconds + (s.clash != null ? StruggleSeconds : 0) && !s.arrived && s.packet.Power > 0) { s.arrived = true; int target = 1 - s.packet.Owner; if (report.Before[target, s.packet.End] > 0) { var hitLight = new EventFx.Plan(); hitLight.Rings.Add((s.path.Last(), Color.white, 26, 70, 0)); hitLight.Rings.Add((s.path.Last(), EventFx.Side(target), 26, 50, .08f)); StartCoroutine(EventFx.Run(lightRoot, hitLight, () => Delta, 1)); impulse = 8; StartCoroutine(Impact(root, s.path.Last(), c.State.Health[target, s.packet.End] == 0 ? "서버 소실" : "착탄", s.packet.Owner == 0 ? Ui.Cyan : Ui.Red)); c.servers.First(v => v.owner == target && v.channel == s.packet.End).Render(c.State.Health[target, s.packet.End], 0); } }
                 }
                 impulse = Mathf.Max(0, impulse - Delta * 15); Frame(count > 0 ? focus / count : new Vector2(982, 487), 1, impulse, elapsed); yield return null; if (elapsed >= duration) break;
             }

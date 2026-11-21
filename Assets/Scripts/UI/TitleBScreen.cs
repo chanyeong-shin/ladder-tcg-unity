@@ -10,7 +10,7 @@ namespace Breach.UI
     // HTML B at its native 1280 x 720. The canvas scales the whole composition.
     public sealed class TitleBScreen : MonoBehaviour
     {
-        BattleController c; TitleBBackdrop backdrop; RectTransform root, art;
+        BattleController c; TitleBBackdrop backdrop, glitchFx; RectTransform root, art, logoRect; TMP_Text ghostC, ghostR; CanvasGroup ghost;
         readonly List<Button> menu = new List<Button>();
         readonly List<MenuSignal> signals = new List<MenuSignal>();
         MenuSignalNoise menuNoise;
@@ -34,7 +34,12 @@ namespace Breach.UI
             Label(text,"BREACH",198,145,135,8,new Color(.945f,.969f,1),true);
             Label(text,"PROTOCOL",328,80,59,20,new Color(.74f,.81f,.86f),true);
             Label(text,"TWO NETWORKS. ONE SURVIVOR.",85,24,14,5,new Color(.66f,.82f,.86f),true);
-            Label(text,"침투 프로토콜",403,36,20,0,new Color(.76f,.85f,.89f));
+            Label(text,"침투 프로토콜",403,36,20,0,new Color(.76f,.85f,.89f));logoRect=text;
+            // #logoGhost: cyan/red BREACH copies pulled apart for 0.18 s when the title lands (HTML tab 1).
+            var ghosts=Ui.Rect("B 로고 잔상",root,0,0,1280,720);ghost=ghosts.gameObject.AddComponent<CanvasGroup>();ghost.blocksRaycasts=false;ghost.alpha=0;
+            ghostC=Label(ghosts,"BREACH",198,145,135,8,new Color(.341f,.863f,.957f),true);ghostR=Label(ghosts,"BREACH",198,145,135,8,new Color(1,.322f,.42f),true);
+            // #glitch sits above the logo in the SVG, so it is a second graphic layer here.
+            var glitchRect=Ui.Rect("B 지직임",root,0,0,1280,720);glitchFx=glitchRect.gameObject.AddComponent<TitleBBackdrop>();glitchFx.GlitchOnly=true;glitchFx.raycastTarget=false;
             var menus=Ui.Rect("메뉴 - 세로 한 줄",root,0,0,1280,720);menuGroup=menus.gameObject.AddComponent<CanvasGroup>();
             string[] names={"침투 개시","플레이 방법","환경 설정","종료"};
             for(int i=0;i<4;i++)menu.Add(TextButton(menus,names[i],480+i*46,20));
@@ -75,14 +80,14 @@ namespace Breach.UI
             menuGroup.alpha=1;
             for(elapsed=0;elapsed<4.6f;elapsed+=Time.unscaledDeltaTime*IntroPlaybackSpeed)
             {
-                backdrop.TimeValue=elapsed;backdrop.SetVerticesDirty();
-                logo.alpha=Mathf.SmoothStep(0,1,Mathf.InverseLerp(2.9f,3.6f,elapsed));
-                float glitch=elapsed>=2.9f&&elapsed<3.08f?1:0;int tick=Mathf.FloorToInt(elapsed*24);
-                ((RectTransform)logo.transform).anchoredPosition=glitch>0?new Vector2(((tick*37)%9-4)*3,((tick*11)%5-2)*1.5f):Vector2.zero;if(glitch>0&&tick%3==0)logo.alpha*=.35f;
+                backdrop.TimeValue=glitchFx.TimeValue=elapsed;backdrop.SetVerticesDirty();glitchFx.SetVerticesDirty();
+                // Logo: opacity ease((t-2.9)/0.75), scale 1.06 -> 1 around (640,330); ghosts 2.90-3.08 s at 0.7.
+                float l=1-Mathf.Pow(1-Mathf.Clamp01((elapsed-2.9f)/.75f),3),sc=1+(1-l)*.06f;int tick=Mathf.FloorToInt(elapsed*24);
+                logo.alpha=l;logoRect.localScale=Vector3.one*sc;logoRect.anchoredPosition=new Vector2(640*(1-sc),-330*(1-sc));
+                ghost.alpha=elapsed>2.9f&&elapsed<3.08f?.7f:0;
+                ghostC.rectTransform.anchoredPosition=new Vector2(100-8-TitleBBackdrop.Rnd(tick,13)*10,-198);ghostR.rectTransform.anchoredPosition=new Vector2(100+8+TitleBBackdrop.Rnd(tick,14)*10,-198);
                 for(int i=0;i<signals.Count;i++)signals[i].SetTime(elapsed-3.7f-i*.07f,i);
                 menuNoise.TimeValue=elapsed-3.7f;menuNoise.SetVerticesDirty();
-                float hit=Mathf.Clamp01((elapsed-TitleBBackdrop.ContactTime)/.38f);
-                art.anchoredPosition=elapsed>=TitleBBackdrop.ContactTime&&hit<1?new Vector2(Mathf.Sin(hit*62)*14,Mathf.Sin(hit*43)*8)*Mathf.Pow(1-hit,2):Vector2.zero;
                 yield return null;
             }
             intro=null;FinishIntro();
@@ -90,7 +95,7 @@ namespace Breach.UI
         public void FinishIntro()
         {
             if(intro!=null){StopCoroutine(intro);intro=null;}if(!root)return;
-            elapsed=4.6f;backdrop.TimeValue=4.6f;backdrop.SetVerticesDirty();art.anchoredPosition=Vector2.zero;((RectTransform)logo.transform).anchoredPosition=Vector2.zero;
+            elapsed=4.6f;backdrop.TimeValue=glitchFx.TimeValue=4.6f;backdrop.SetVerticesDirty();glitchFx.SetVerticesDirty();art.anchoredPosition=Vector2.zero;logoRect.localScale=Vector3.one;logoRect.anchoredPosition=Vector2.zero;ghost.alpha=0;
             logo.alpha=menuGroup.alpha=1;menuGroup.interactable=menuGroup.blocksRaycasts=true;ready=true;
             for(int i=0;i<signals.Count;i++)signals[i].SetTime(1,i);
             menuNoise.TimeValue=-1;menuNoise.SetVerticesDirty();
