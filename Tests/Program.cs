@@ -41,6 +41,16 @@ class Program {
  plain.ChooseBot(out var pi,out var pt);hidden.ChooseBot(out var hi,out var ht);
  Check(pi==hi&&pt==ht,"bot decision cannot read opponent secret or hand");
  Check(hidden.Power[0,1]==2&&hidden.Hidden.Count==1&&hidden.Hands[1].Count==2,"bot evaluation leaves live board untouched");
+ b=Empty();b.Hands[0].Add(Card.Reroute);Check(b.Play(0,0,Battle.RungTarget(0,Battle.Mine))&&b.RungRiders[0]==0,"blue rung rides placer only");
+ Check(b.Route(0,0).End==1&&b.Route(1,0).End==0,"blue rung is ignored by the opponent");
+ b=Empty();b.Hands[1].Add(Card.Reroute);b.Phase=1;Check(b.Play(1,0,Battle.RungTarget(4,Battle.Theirs))&&b.RungRiders[2]==0,"red rung rides the placer's opponent");
+ Check(b.Route(0,0).End==1&&b.Route(1,0).End==0,"red rung turns only the other side");
+ b=Empty();b.Hands[0].Add(Card.Reroute);b.Play(0,0,Battle.RungTarget(0,Battle.Both));Check(b.RungRiders[0]==-1&&b.Route(0,0).End==1&&b.Route(1,0).End==1,"yellow rung rides both");
+ b.Hands[0].Add(Card.Reroute);Check(!b.CanPlay(0,0,Battle.RungTarget(0,Battle.Theirs))&&b.Play(0,0,0)&&b.Rungs[0]==-1&&b.RungRiders[0]==-1,"removing a rung is one target and clears its color");
+ b=Empty();b.Hands[0].Add(Card.Reroute);b.SaveAction();b.Play(0,0,Battle.RungTarget(2,Battle.Theirs));Check(b.Undo()&&b.RungRiders[1]==-1,"undo restores rung color");
+ b=Empty();b.Attacker=1;b.Hands[1].Add(Card.Inject);b.Hands[1].Add(Card.Inject);b.Hands[1].Add(Card.Buffer);
+ for(int g=0;g<6&&b.ChooseBot(out bi,out bt);g++)b.Play(1,bi,bt);
+ Check(Math.Max(b.Power[1,0],Math.Max(b.Power[1,1],b.Power[1,2]))>=2,"attacking bot stacks injects on one channel");
  Console.WriteLine("TOTAL "+count);
  }
 }
