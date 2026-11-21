@@ -115,7 +115,7 @@ namespace Breach.UI
                 for (int i = 0; i < 5; i++) { var n = Find(root.transform, "Enemy_Back_" + (374 + i)); if (n) n.gameObject.SetActive(i < EnemyHandShown); var holder = Find(root.transform, "Source_64_" + (374 + i)); if (holder) holder.gameObject.SetActive(i < EnemyHandShown); }
             }
             roundLabel.text = "ROUND " + State.Round.ToString("00"); statusLabel.text = State.Phase == 2 ? "동시 발동 · 패킷 해결 중" : State.Actor == 0 ? "내 " + (State.Phase == 0 ? "공격" : "방어") + " 턴 · 카드를 끌어 놓거나 선택 후 대상을 누르세요" : "상대 " + (State.Phase == 0 ? "공격" : "방어") + " 턴 · 대응 준비 중";
-            secretLabel.text = "보안 카드 / ENCRYPTED    나 " + State.Hidden.Count(s => s.Owner == 0) + "  ·  상대 " + (HideEnemyActions ? publicSecrets : State.Hidden.Count(s => s.Owner == 1));
+            secretLabel.text = "강화 카드 대기 / PENDING    나 " + State.Hidden.Count(s => s.Owner == 0) + "  ·  상대 " + (HideEnemyActions ? publicSecrets : State.Hidden.Count(s => s.Owner == 1));
             RefreshBoard(); BuildHand(); RefreshTargets();
         }
         public static Transform Find(Transform root, string name) { foreach (Transform t in root) { if (t.name == name) return t; var n = Find(t, name); if (n) return n; } return null; }

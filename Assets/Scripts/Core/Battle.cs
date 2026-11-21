@@ -78,15 +78,15 @@ namespace Breach {
   void AccumulateHit(int owner,int channel,int amount,Resolution r,int[,] damage){if(r.Before[owner,channel]<=0)return;int over=Math.Max(0,amount-r.Before[owner,channel]);damage[owner,channel]+=amount;r.Events.Add((owner==0?"내":"상대")+" 서버 "+(channel+1)+" · 피해 "+amount);int splash=over/2;if(splash>0){if(channel>0)damage[owner,channel-1]+=splash;if(channel<2)damage[owner,channel+1]+=splash;}}
   public int Alive(int player){int n=0;for(int c=0;c<3;c++)if(Health[player,c]>0)n++;return n;}
   public void NextRound(){if(Winner!=-1)return;if(Phase!=2)throw new InvalidOperationException("Resolve before next round");Round++;Attacker=1-Attacker;Phase=0;Array.Clear(Walls,0,3);for(int p=0;p<2;p++)Draw(p,1+3-Alive(p));SaveAction();}
-  // Evaluate only the public board plus our own reserved cards. The opponent's
-  // hand/secrets are deliberately absent. Resolving these copies uses the same
+  // Evaluate only the public board. Since v1.1 (user 11-22) every placed card is public, including the
+  // opponent's security cards; the opponent's hand is still absent. Resolving these copies uses the same
   // collision, piercing, firewall and splash rules as play, without touching RNG.
   Battle BotView(){
    var b=new Battle(1,Attacker){Phase=Phase,Round=Round,Winner=Winner};
    b.Health=(int[,])Health.Clone();b.Power=(int[,])Power.Clone();b.Pierce=(bool[,])Pierce.Clone();b.Walls=(bool[])Walls.Clone();
    b.Rungs=(int[])Rungs.Clone();b.RungOwners=(int[])RungOwners.Clone();b.RungRiders=(int[])RungRiders.Clone();
    b.Hands[0].Clear();b.Hands[1]=new List<Card>(Hands[1]);
-   b.Hidden=Hidden.Where(s=>s.Owner==1).ToList();return b;
+   b.Hidden=new List<Secret>(Hidden);return b;
   }
   static float Outcome(Battle view){
    var result=view.Resolve();float score=0;

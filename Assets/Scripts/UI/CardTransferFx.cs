@@ -32,7 +32,7 @@ namespace Breach.UI {
   public IEnumerator Play(Card card,int owner,Vector2 origin,Vector2 originSize){
    Color color=owner==0?Ui.Cyan:Ui.Red;
    // user 11-22: "봇이 내는 카드 보고 싶음 ... 그냥 다 공개 하자" — the bot's cards show their face when placed
-   Sprite sprite=(owner==0&&Cards.Enhanced(card))?backImage:cardImages[(int)card];
+   Sprite sprite=cardImages[(int)card]; // v1.1: every placed card shows its face
    var root=Root("카드 사용 - 안착 분해 전송");Rect dock=DockRect;
    var chip=Picture("사용 카드",root,sprite,new Rect(origin,originSize));var rect=chip.rectTransform;
    Phase="move";

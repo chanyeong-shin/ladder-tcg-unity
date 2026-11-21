@@ -79,8 +79,8 @@ namespace Breach.UI
             var center=new Color(.227f,.651f,.776f);var side=new Color(.2f,.478f,.58f);
             for(int lane=0;lane<3;lane++){float x=BattleController.LaneX[lane];
                 Ui.Line("버스 가운데",bus,new Vector2(x,top[lane]),new Vector2(x,bottom[lane]),center,3);
-                Ui.Line("버스 왼쪽",bus,new Vector2(x-7.5f,top[lane]),new Vector2(x-7.5f,bottom[lane]),side,1);
-                Ui.Line("버스 오른쪽",bus,new Vector2(x+7.5f,top[lane]),new Vector2(x+7.5f,bottom[lane]),side,1);}
+                Ui.Line("버스 왼쪽",bus,new Vector2(x-7.5f,top[lane]),new Vector2(x-7.5f,bottom[lane]),side,1.5f);
+                Ui.Line("버스 오른쪽",bus,new Vector2(x+7.5f,top[lane]),new Vector2(x+7.5f,bottom[lane]),side,1.5f);}
             var pins=contacts.Cast<Transform>().OfType<RectTransform>().ToArray();
             foreach(var pin in pins){var r=StageRect(pin);foreach(var g in pin.GetComponentsInChildren<Graphic>(true))g.enabled=false;
                 var ring=Ui.Box("접점 - 비아 고리",contacts,r.center.x-10,r.center.y-10,20,20,new Color(.498f,.914f,1),true,1,32);
