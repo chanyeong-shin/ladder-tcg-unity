@@ -221,8 +221,8 @@ namespace Breach.UI
             if (card == Card.Reroute) { for (int t = 0; t < 6; t++) if (State.CanPlay(0, selected, t)) Ui.Line("합법 회선 자리", hints, new Vector2(LaneX[t % 2] + 12, RowY[t / 2]), new Vector2(LaneX[t % 2 + 1] - 12, RowY[t / 2]), new Color(1, .8f, .2f, .55f), 2); }
             else if (card == Card.Buffer || card == Card.Overflow) Ui.Box("소켓에 사용", hints, 223, 381, 228, 236, Ui.Cyan, false, 2);
             else for (int lane = 0; lane < 3; lane++) if (State.CanPlay(0, selected, lane)) { if (card == Card.Firewall) Ui.Box("차단할 채널", hints, LaneX[lane] - 14, 477, 28, 40, Ui.Gold, false, 2); else { // HTML tab 4 targets(): r 18 at y 720, fill rgba(56,217,255,.12), stroke #7fe9ff 3, stroke-opacity .55+.45|sin(4u+i)|
-                    Ui.Box("장전할 서버 안", hints, LaneX[lane] - 18, 702, 36, 36, new Color(.22f, .851f, 1, .12f), true, 1, 40);
-                    var ring = Ui.Box("장전할 서버", hints, LaneX[lane] - 18, 702, 36, 36, new Color(.498f, .914f, 1, 1), false, 3, 40); ring.gameObject.AddComponent<RingPulse>().Phase = lane; } }
+                    // user 11-22: "서버에서 가로 빛번짐 효과" — the attack bloom sits on the server and blinks
+                    var bloom = CombatPresentation.Flare(hints, "장전할 서버 빛번짐", new Vector2(LaneX[lane], 777), Ui.Cyan, .9f); bloom.gameObject.AddComponent<RingPulse>().Phase = lane; } }
         }
         public void Preview(int target, bool rung)
         {

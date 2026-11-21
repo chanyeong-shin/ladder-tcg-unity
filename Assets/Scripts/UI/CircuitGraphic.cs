@@ -40,6 +40,8 @@ namespace Breach.UI {
   // Static pattern: Reveal draws each trace from its first point (screen edge) toward its end (UI part / board).
   public float Reveal = 1, Glow = .4f;
   // Signal mode: heads run along board-bound traces only; time in seconds, -1 = off.
+  public Color Ink = new Color(.22f, .851f, 1);
+  Color Mix(float white, float a) { var c = Color.Lerp(Ink, Color.white, white); c.a = a; return c; }
   public bool Signals; public float SignalTime = -1; public const float SignalSpan = .75f, SignalTail = 130, SignalLength = 1.25f;
   public static float Delay(int index) { return .45f * ((index * 37) % 11) / 10f; }
   static float Ease3(float v) { v = Mathf.Clamp01(v); return 1 - (1 - v) * (1 - v) * (1 - v); }
@@ -66,10 +68,10 @@ namespace Breach.UI {
      var t = Data.Comets[index]; float u = (SignalTime - Delay(index)) / SignalSpan; if (u < 0) continue; float s = Mathf.Min(1, Ease(u)) * t.Length;
      if (u < 1) {
       for (int m = 0; m < 10; m++) { float f = 1 - m / 10f, a = color.a * f * f;
-       Partial(vh, t, s - SignalTail * (m + 1) / 10f, s - SignalTail * m / 10f, 6, new Color(.38f, .9f, 1, a * .12f));
-       Partial(vh, t, s - SignalTail * (m + 1) / 10f, s - SignalTail * m / 10f, 1.2f + 1.2f * f, new Color(.62f, .95f, 1, a * .85f)); }
-      var h = CircuitData.Along(t, s); Box(vh, new Rect(h.x - 5, h.y - 5, 10, 10), new Color(.6f, .95f, 1, color.a * .18f)); Box(vh, new Rect(h.x - 2, h.y - 2, 4, 4), new Color(.94f, 1, 1, color.a));
-     } else { float glow = 1 - Mathf.Clamp01((u - 1) * SignalSpan / .35f); if (glow > 0) { var e = t.Points[t.Points.Length - 1]; Box(vh, new Rect(e.x - 4, e.y - 4, 8, 8), new Color(.8f, .98f, 1, glow * color.a * .7f)); } }
+       Partial(vh, t, s - SignalTail * (m + 1) / 10f, s - SignalTail * m / 10f, 6, Mix(0, a * .12f));
+       Partial(vh, t, s - SignalTail * (m + 1) / 10f, s - SignalTail * m / 10f, 1.2f + 1.2f * f, Mix(.45f, a * .85f)); }
+      var h = CircuitData.Along(t, s); Box(vh, new Rect(h.x - 5, h.y - 5, 10, 10), Mix(.45f, color.a * .18f)); Box(vh, new Rect(h.x - 2, h.y - 2, 4, 4), Mix(.9f, color.a));
+     } else { float glow = 1 - Mathf.Clamp01((u - 1) * SignalSpan / .35f); if (glow > 0) { var e = t.Points[t.Points.Length - 1]; Box(vh, new Rect(e.x - 4, e.y - 4, 8, 8), Mix(.7f, glow * color.a * .7f)); } }
     }
     return;
    }

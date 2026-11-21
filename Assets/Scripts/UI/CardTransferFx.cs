@@ -53,30 +53,48 @@ namespace Breach.UI {
    chip.type=Image.Type.Filled;chip.fillMethod=Image.FillMethod.Vertical;chip.fillOrigin=(int)Image.OriginVertical.Bottom;
    var barGlow=Ui.Box("스캔 빛 번짐",root,dock.x-16,dock.y-8,dock.width+32,16,new Color(.91f,.98f,1,.3f));
    var bar=Ui.Box("스캔 빛 막대",root,dock.x-8,dock.y-2,dock.width+16,4,new Color(.91f,.98f,1));
-   float top=dock.y+8;var lineInk=new Color(.498f,.914f,1);var lines=new List<Shape[]>();var xs=new float[7];
-   for(int k=0;k<7;k++){xs[k]=dock.x+14+k*(dock.width-28)/6;float jog=k%2==1?12:-12;
-    lines.Add(new[]{Ui.Line("스캔 회로선 위",root,new Vector2(xs[k],top),new Vector2(xs[k],top+1),lineInk,1.6f),Ui.Line("스캔 회로선 꺾임",root,new Vector2(xs[k],top),new Vector2(xs[k]+jog,top),lineInk,1.6f),Ui.Line("스캔 회로선 아래",root,new Vector2(xs[k]+jog,top),new Vector2(xs[k]+jog,top+1),lineInk,1.6f),Ui.Box("스캔 회로 패드",root,xs[k]+jog-3,top-3,6,6,Ui.Cyan)});}
-   void Trace(int k,float by,float drain){
-    float jog=k%2==1?12:-12,mid=(top+by)/2,x=xs[k];var seg=lines[k];
-    // drain: 0 = whole line, 1 = everything pulled into the end pad (absorbed).
-    float from=Mathf.Lerp(top,by,drain);
-    float upper0=Mathf.Min(from,mid);At(seg[0].rectTransform,new Vector2(x,upper0));seg[0].rectTransform.localRotation=Quaternion.Euler(0,0,-90);seg[0].rectTransform.sizeDelta=new Vector2(Mathf.Max(0,mid-upper0),1.6f);
-    At(seg[1].rectTransform,new Vector2(Mathf.Min(x,x+jog),mid-.8f));seg[1].rectTransform.localRotation=Quaternion.identity;seg[1].rectTransform.pivot=new Vector2(0,1);seg[1].rectTransform.sizeDelta=new Vector2(from<=mid?12:0,1.6f);
-    float lower0=Mathf.Max(from,mid);At(seg[2].rectTransform,new Vector2(x+jog,lower0));seg[2].rectTransform.localRotation=Quaternion.Euler(0,0,-90);seg[2].rectTransform.sizeDelta=new Vector2(Mathf.Max(0,by-lower0),1.6f);
-    At(seg[3].rectTransform,new Vector2(x+jog-3,by-3));
+   // user 11-22: "카드 스캔될때 회로가 퍼져야지 쭉 늘어나는건 별로다" / "회로는 레퍼런스대로".
+   // Reference rules (same as _도구/회로무늬_생성.py): parallel bundles at a fixed pitch, 45 degree bends with mitred
+   // offsets so the pitch stays equal, an end pad on every line, no crossings. When the bar passes a bundle row a chip
+   // appears at the card's center and its 4 lines spread out to both card edges.
+   var lineInk=new Color(.498f,.914f,1);var seeds=new List<(Vector2 p,float at,Shape pad)>();var traces=new List<(int seed,Vector2[] pts,float total,Shape[] segs,Shape tip)>();
+   const float pitch=6;const int lanes=4;float cx0=dock.center.x;
+   for(int row=0;row<3;row++){
+    float cy=dock.y+dock.height*(.2f+row*.3f);int bend=row%2==0?-1:1; // bundles bend away from each other in turn
+    var scanChip=Ui.Box("스캔 회로 칩",root,cx0-8,cy-lanes*pitch/2-3,16,lanes*pitch+6,lineInk,false,1.4f);scanChip.gameObject.SetActive(false);seeds.Add((new Vector2(cx0,cy),(cy-dock.y)/dock.height,scanChip));
+    foreach(int dir in new[]{-1,1}){
+     for(int i=0;i<lanes;i++){
+      float y=cy+(i-(lanes-1)/2f)*pitch;
+      // mitre: for a 45 degree bend each line starts its bend 0.414 * pitch later than the line inside the turn
+      int inner=bend*dir>0?lanes-1-i:i;float jogX=cx0+dir*(8+10+inner*pitch*.414f),rise=bend*12;
+      var pts=new[]{new Vector2(cx0+dir*8,y),new Vector2(jogX,y),new Vector2(jogX+dir*Mathf.Abs(rise),y+rise),new Vector2(dir<0?dock.x+6:dock.xMax-6,y+rise)};
+      float total=0;var segs=new Shape[3];
+      for(int k=1;k<4;k++){total+=Vector2.Distance(pts[k-1],pts[k]);segs[k-1]=Ui.Line("스캔 회로선",root,pts[k-1],pts[k],lineInk,1.2f);segs[k-1].gameObject.SetActive(false);}
+      var tip=Ui.Box("스캔 회로 끝 패드",root,pts[3].x-2,pts[3].y-2,4,4,Ui.Cyan);tip.gameObject.SetActive(false);traces.Add((seeds.Count-1,pts,total,segs,tip));
+     }
+    }
    }
+   // grow: 0 = nothing, 1 = whole trace drawn from its seed
+   void Grow(int index,float grow){var tr=traces[index];float d=tr.total*grow;
+    for(int i=1;i<4;i++){float len=Vector2.Distance(tr.pts[i-1],tr.pts[i]);var seg=tr.segs[i-1];bool on=d>0&&len>.5f;seg.gameObject.SetActive(on);if(on)seg.rectTransform.sizeDelta=new Vector2(Mathf.Min(d,len),1.2f);d-=len;}
+    tr.tip.gameObject.SetActive(grow>=.999f);}
    Phase="fragment";
    for(float t=0;t<1;t+=Delta/.8f){Progress=t;float y=dock.y+dock.height*t;chip.fillAmount=1-t;At(bar.rectTransform,new Vector2(dock.x-8,y-2));At(barGlow.rectTransform,new Vector2(dock.x-16,y-8));
-    for(int k=0;k<7;k++){bool on=y>top;foreach(var g in lines[k])g.gameObject.SetActive(on);if(on)Trace(k,y,0);}yield return null;}
+    for(int i=0;i<seeds.Count;i++)seeds[i].pad.gameObject.SetActive(t>=seeds[i].at);
+    for(int i=0;i<traces.Count;i++){float since=(t-seeds[traces[i].seed].at)*.8f;Grow(i,since<=0?0:Ease(Mathf.Clamp01(since/.22f)));}
+    yield return null;}
    chip.gameObject.SetActive(false);bar.gameObject.SetActive(false);barGlow.gameObject.SetActive(false);
-   // Absorption: each card line drains into its end pad, the pads slide to the socket exit,
+   for(float t=0;t<.22f;t+=Delta){for(int i=0;i<traces.Count;i++){float since=(1-seeds[traces[i].seed].at)*.8f+t;Grow(i,Ease(Mathf.Clamp01(since/.22f)));}yield return null;}
+   for(int i=0;i<traces.Count;i++)Grow(i,1);
+   // Absorption: the traces pull back into their pads, the pads gather at the socket exit,
    // and three comets leave the exit along the socket-to-board routes.
-   float bottom=dock.yMax;var exit=Routes[1][0];var routeInk=new Color(color.r,color.g,color.b,.18f);
+   var exit=Routes[1][0];var routeInk=new Color(color.r,color.g,color.b,.18f);
    for(int lane=0;lane<3;lane++)for(int seg=1;seg<Routes[lane].Length;seg++)Ui.Line("소켓-판 회로",root,Routes[lane][seg-1],Routes[lane][seg],routeInk,lane==1?3:1.5f);
    var comets=new List<Shape>();for(int lane=0;lane<3;lane++)for(int part=0;part<10;part++)comets.Add(Ui.Box("소켓 혜성",root,0,0,1,1,Color.clear));
    Phase="absorb-card";
-   for(float t=0;t<1;t+=Delta/.7f){Progress=t;float drain=Ease(Mathf.Clamp01(t/.45f)),slide=Ease(Mathf.InverseLerp(.3f,.6f,t));
-    for(int k=0;k<7;k++){Trace(k,bottom,drain);float jog=k%2==1?12:-12;var pad=lines[k][3];Vector2 from=new Vector2(xs[k]+jog,bottom),to=exit+new Vector2(0,(k-3)*3);At(pad.rectTransform,Vector2.Lerp(from,to,slide)-new Vector2(3,3));pad.color=new Color(Ui.Cyan.r,Ui.Cyan.g,Ui.Cyan.b,1-Mathf.InverseLerp(.55f,.7f,t));}
+   for(float t=0;t<1;t+=Delta/.7f){Progress=t;float drain=Ease(Mathf.Clamp01(t/.4f)),slide=Ease(Mathf.InverseLerp(.3f,.6f,t));
+    for(int i=0;i<traces.Count;i++)Grow(i,1-drain);
+    for(int i=0;i<seeds.Count;i++){var pad=seeds[i].pad;var half=pad.rectTransform.sizeDelta/2;At(pad.rectTransform,Vector2.Lerp(seeds[i].p,exit+new Vector2(0,(i-1)*4),slide)-half);pad.rectTransform.localScale=Vector3.one*Mathf.Lerp(1,.4f,slide);pad.color=new Color(lineInk.r,lineInk.g,lineInk.b,1-Mathf.InverseLerp(.55f,.7f,t));}
     int index=0;for(int lane=0;lane<3;lane++){float head=Mathf.InverseLerp(.5f+lane*.04f,1,t);
      for(int part=0;part<10;part++){var piece=comets[index++];float h1=head-part*.035f,h0=h1-.035f;bool visible=h1>0&&h0<1;piece.gameObject.SetActive(visible);if(!visible)continue;
       Vector2 pa=Along(Routes[lane],Mathf.Clamp01(h0)),pb=Along(Routes[lane],Mathf.Clamp01(h1)),dv=pb-pa;At(piece.rectTransform,pa);piece.rectTransform.pivot=new Vector2(0,.5f);piece.rectTransform.localRotation=Quaternion.Euler(0,0,-Mathf.Atan2(dv.y,dv.x)*Mathf.Rad2Deg);

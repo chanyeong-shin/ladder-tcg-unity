@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Linq;
+using UnityEngine.UI;
 using UnityEngine;
 
 namespace Breach.UI {
@@ -14,7 +15,11 @@ namespace Breach.UI {
   public bool Visible { get { return target > 0; } }
   public float Amount { get { return show; } }
 
+  BattleController host;
+  // user 11-22: blue turn -> red circuit, red turn -> blue circuit (background index as in BattleController.Render)
+  Color Tint() { if (!host || host.State == null) return EventFx.Me; int bg = host.State.Phase == 2 ? 2 : host.State.Actor == 0 ? 0 : 1; return bg == 0 ? EventFx.Enemy : EventFx.Me; }
   public void Initialize(BattleController c) {
+   host = c;
    root = Ui.Rect("카드 들기 - 어두운 막과 회로", c.game.transform, 0, 0, 1920, 1080);
    int above = c.backgrounds.Max(b => b.transform.GetSiblingIndex()); root.SetSiblingIndex(above + 1);
    screen = Make("화면 회로 (막 아래)", "Circuit_Screen", new Color(Ui.Cyan.r, Ui.Cyan.g, Ui.Cyan.b, .22f));
@@ -39,12 +44,12 @@ namespace Breach.UI {
   void Apply() {
    if (!root) return; float e = show * show * (3 - 2 * show);
    foreach (var d in dims) d.color = new Color(0, 0, 0, .55f * e * dimWeight);
-   screen.Reveal = reveal; screen.color = new Color(Ui.Cyan.r, Ui.Cyan.g, Ui.Cyan.b, .22f * e); screen.SetVerticesDirty();
-   inner.Reveal = 1; inner.color = new Color(Ui.Cyan.r, Ui.Cyan.g, Ui.Cyan.b, Mathf.Max(.073f * e * Mathf.Clamp01(reveal), innerPulse)); inner.SetVerticesDirty();
+   screen.Reveal = reveal; var ink = Tint(); screen.color = new Color(ink.r, ink.g, ink.b, .22f * e); screen.SetVerticesDirty();
+   inner.Reveal = 1; inner.color = new Color(ink.r, ink.g, ink.b, Mathf.Max(.073f * e * Mathf.Clamp01(reveal), innerPulse)); inner.SetVerticesDirty();
   }
   // Activation: one comet per board-bound bundle, staggered over 0.45 s, 0.75 s each, while the circuit stays faint.
   public IEnumerator Activate(System.Func<float> delta, System.Action<float> progress) {
-   signals.color = new Color(1, 1, 1, .85f);
+   signals.color = new Color(1, 1, 1, .85f); signals.Ink = Tint();
    for (float t = 0; t < CircuitGraphic.SignalLength; t += delta()) { progress?.Invoke(t / CircuitGraphic.SignalLength); signals.SignalTime = t; innerPulse = .2f * Mathf.Max(0, Mathf.Sin(Mathf.PI * Mathf.Clamp01(t / CircuitGraphic.SignalLength))); signals.SetVerticesDirty(); yield return null; }
    innerPulse = 0; signals.SignalTime = -1; signals.SetVerticesDirty();
   }
@@ -52,8 +57,8 @@ namespace Breach.UI {
  }
  // Target ring blink from HTML tab 4: stroke-opacity .55 + .45 * |sin(4u + i)|.
  public sealed class RingPulse : MonoBehaviour {
-  public int Phase; float start; Shape shape;
-  void OnEnable() { start = Time.unscaledTime; shape = GetComponent<Shape>(); }
+  public int Phase; float start; Graphic shape;
+  void OnEnable() { start = Time.unscaledTime; shape = GetComponent<Graphic>(); }
   void Update() { if (!shape) return; var c = shape.color; c.a = .55f + .45f * Mathf.Abs(Mathf.Sin((Time.unscaledTime - start) * 4 + Phase)); shape.color = c; }
  }
 }

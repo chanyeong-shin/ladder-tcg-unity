@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 namespace Breach.UI {
  // Soft round glow. Solid = fraction of the radius drawn at full color before fading to 0 at the rim,
@@ -28,6 +29,7 @@ namespace Breach.UI {
   const float K = 2, Appear = .42f, Cycle = 1.6f;
   float start; Action<int> pick; Action cancel;
   readonly RectTransform[] bodies = new RectTransform[3]; readonly SoftDisc[] halos = new SoftDisc[3], rings = new SoftDisc[3], streaks = new SoftDisc[3];
+  readonly DotHover[] hovers = new DotHover[3];
   readonly Shape[] cores = new Shape[3], streaks2 = new Shape[3], ghostC = new Shape[3], ghostR = new Shape[3];
 
   public static BridgeDots Show(Transform parent, Vector2 a, Vector2 b, Action<int> pick, Action cancel) {
@@ -43,6 +45,7 @@ namespace Breach.UI {
     int color = Order[i]; Color tint = Tint(color); float cx = mid.x + dx[i] * K, cy = mid.y - 24 * K;
     var slot = Ui.Rect("점 " + (i + 1), root, cx - 15 * K, cy - 15 * K, 30 * K, 30 * K);
     var hit = slot.gameObject.AddComponent<Image>(); hit.color = Color.clear;
+    dots.hovers[i] = slot.gameObject.AddComponent<DotHover>();
     var button = slot.gameObject.AddComponent<Button>(); button.transition = Selectable.Transition.None; button.targetGraphic = hit; button.onClick.AddListener(() => dots.Finish(color));
     float c0 = 15 * K; var body = Ui.Rect("점 몸체", slot, 0, 0, 30 * K, 30 * K); dots.bodies[i] = body;
     dots.halos[i] = Blur("빛", body, c0, c0, 13 * K, 3.5f * K, tint, .18f);
@@ -86,8 +89,10 @@ namespace Breach.UI {
     } else {
      bodies[i].anchoredPosition = Vector2.zero;
      Alpha(streaks[i], 0); Alpha(streaks2[i], 0); Alpha(ghostC[i], 0); Alpha(ghostR[i], 0);
-     Alpha(halos[i], .3f); halos[i].rectTransform.localScale = Vector3.one * (14f / 13f);
-     Alpha(rings[i], .65f); rings[i].rectTransform.localScale = Vector3.one * (8.5f / 8f);
+     // user 11-22: brighter under the mouse
+     bool over = hovers[i] && hovers[i].Over;
+     Alpha(halos[i], over ? .6f : .3f); halos[i].rectTransform.localScale = Vector3.one * (14f / 13f) * (over ? 1.25f : 1);
+     Alpha(rings[i], over ? .95f : .65f); rings[i].rectTransform.localScale = Vector3.one * (8.5f / 8f) * (over ? 1.15f : 1);
      Alpha(cores[i], 1);
     }
    }
@@ -104,5 +109,10 @@ namespace Breach.UI {
    }
    if (root) Destroy(root.gameObject);
   }
+ }
+ public sealed class DotHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler {
+  public bool Over;
+  public void OnPointerEnter(PointerEventData e) { Over = true; }
+  public void OnPointerExit(PointerEventData e) { Over = false; }
  }
 }

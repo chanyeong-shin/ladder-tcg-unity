@@ -24,8 +24,9 @@ namespace Breach.UI {
   static float Ease(float v) { v = Mathf.Clamp01(v); return 1 - Mathf.Pow(1 - v, 3); }
   sealed class Band { public Graphic[] Layers; public float From, Length, Total; public float Delay; }
   public static IEnumerator Run(Transform parent, Plan plan, Func<float> delta, float duration = 3) {
-   var root = Ui.Rect("이벤트 빛", parent, 0, 0, 1920, 1080); var bands = new List<Band>(); var rings = new List<(Shape s, Vector2 c, float r0, float r1, float delay)>(); var flashes = new List<Shape[]>();
-   foreach (var h in plan.Halos) {
+   var root = Ui.Rect("이벤트 빛", parent, 0, 0, 1920, 1080); var bands = new List<Band>(); var rings = new List<(Shape s, Vector2 c, float r0, float r1, float delay)>(); var caps = new List<(SoftDisc disc, Band last)>(); var flashes = new List<Shape[]>();
+   foreach (var h0 in plan.Halos) {
+    var h = (pts: Extend(h0.pts, 40), h0.col, h0.delay);
     float acc = 0; int first = bands.Count;
     for (int i = 1; i < h.pts.Count; i++) {
      float len = Vector2.Distance(h.pts[i - 1], h.pts[i]); if (len < .5f) continue;
@@ -37,6 +38,7 @@ namespace Breach.UI {
      bands.Add(new Band { Layers = layers, From = acc, Length = len, Delay = h.delay }); acc += len;
     }
     for (int i = first; i < bands.Count; i++) bands[i].Total = acc;
+    if (bands.Count > first) caps.Add((SoftJoint("경로 빛 끝", root, h.pts[h.pts.Count - 1], 30 * S + 2.4f * 9 * S, new Color(h.col.r, h.col.g, h.col.b, 0)), bands[bands.Count - 1]));
    }
    foreach (var r in plan.Rings) { var ring = Ui.Box("이벤트 고리", root, 0, 0, 2 * r.r0, 2 * r.r0, new Color(r.col.r, r.col.g, r.col.b, 0), false, 3, 40); ring.rectTransform.pivot = new Vector2(.5f, .5f); ring.rectTransform.anchoredPosition = new Vector2(r.c.x, -r.c.y); rings.Add((ring, r.c, r.r0, r.r1, r.delay)); }
    foreach (var f in plan.Flashes) flashes.Add(new[] { Ui.Line("회선 깜빡 빛", root, f.a, f.b, new Color(f.col.r, f.col.g, f.col.b, 0), 7 * S + 14), Ui.Line("회선 깜빡", root, f.a, f.b, new Color(f.col.r, f.col.g, f.col.b, 0), 7 * S) });
@@ -48,12 +50,14 @@ namespace Breach.UI {
      foreach (var l in new[] { b.Layers[0], b.Layers[2] }) l.rectTransform.sizeDelta = new Vector2(shown, l.rectTransform.sizeDelta.y);
      SetA(b.Layers[0], .55f * a); SetA(b.Layers[1], shown > 0 ? .55f * a * .5f : 0); b.Layers[2].color = new Color(Core.r, Core.g, Core.b, .9f * a);
     }
+    foreach (var cap in caps) { float u = t - cap.last.Delay, a = u < 0 ? 0 : Blink(u); bool reached = Ease(u / .45f) * cap.last.Total >= cap.last.Total - 1; SetA(cap.disc, reached ? .55f * a * .5f : 0); }
     foreach (var r in rings) { float u = t - r.delay, k = Mathf.Clamp01(u / .5f), rad = (r.r0 + (r.r1 - r.r0) * Ease(k)); r.s.rectTransform.sizeDelta = Vector2.one * 2 * rad; SetA(r.s, u < 0 ? 0 : 1 - k); }
     foreach (var f in flashes) { float a = Blink(t); SetA(f[0], .3f * a); SetA(f[1], a); }
     yield return null;
    }
    if (root) UnityEngine.Object.Destroy(root.gameObject);
   }
+  static List<Vector2> Extend(List<Vector2> pts, float by) { var list = new List<Vector2>(pts); if (list.Count < 2) return list; var d = (list[list.Count - 1] - list[list.Count - 2]).normalized; list.Add(list[list.Count - 1] + d * by); return list; }
   static void SetA(Graphic s, float a) { var c = s.color; c.a = a; s.color = c; }
   static SoftBand SoftLine(string name, Transform parent, Vector2 a, Vector2 b, float width, float solid, Color color) {
    Vector2 d = b - a; var r = Ui.Rect(name, parent, a.x, a.y, d.magnitude, width); var g = r.gameObject.AddComponent<SoftBand>(); g.Solid = solid; g.color = color; g.raycastTarget = false;
