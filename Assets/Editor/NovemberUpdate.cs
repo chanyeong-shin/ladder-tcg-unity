@@ -42,6 +42,10 @@ namespace Breach.EditorTools
                 font.material.name="DoHyeon-Regular Material";AssetDatabase.AddObjectToAsset(font.material,font);
                 AssetDatabase.SaveAssets();
             }
+            // User 11-22 "유니티 카드 이름이 위로 쏠림": every text box was laid out for Noto Sans KR (ascent 1.16 em,
+            // descent 0.288 em, line 1.448 em); Do Hyeon reports 0.8 / 0.2 / 1.25, so top-aligned text rose by 0.36 em.
+            // Give the Do Hyeon asset Noto's line metrics so existing boxes keep their baselines.
+            var face=font.faceInfo;float em=face.pointSize;face.ascentLine=1.16f*em;face.descentLine=-.288f*em;face.lineHeight=1.448f*em;font.faceInfo=face;EditorUtility.SetDirty(font);AssetDatabase.SaveAssets();
             bool Keep(TMP_Text t)=>c.titleFont&&t.font==c.titleFont;
             foreach(var t in UnityEngine.Object.FindObjectsByType<TMP_Text>(FindObjectsInactive.Include,FindObjectsSortMode.None))if(!Keep(t)){t.font=font;EditorUtility.SetDirty(t);}
             foreach(string guid in AssetDatabase.FindAssets("t:Prefab",new[]{"Assets/Prefabs"})){
