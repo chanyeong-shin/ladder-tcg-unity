@@ -58,34 +58,44 @@ namespace Breach.UI {
    // offsets so the pitch stays equal, an end pad on every line, no crossings. When the bar passes a bundle row a chip
    // appears at the card's center and its 4 lines spread out to both card edges.
    var lineInk=new Color(.498f,.914f,1);var seeds=new List<(Vector2 p,float at,Shape pad)>();var traces=new List<(int seed,Vector2[] pts,float total,Shape[] segs,Shape tip)>();
-   const float pitch=6;const int lanes=4;float cx0=dock.center.x;
-   for(int row=0;row<3;row++){
-    float cy=dock.y+dock.height*(.2f+row*.3f);int bend=row%2==0?-1:1; // bundles bend away from each other in turn
-    var scanChip=Ui.Box("스캔 회로 칩",root,cx0-8,cy-lanes*pitch/2-3,16,lanes*pitch+6,lineInk,false,1.4f);scanChip.gameObject.SetActive(false);seeds.Add((new Vector2(cx0,cy),(cy-dock.y)/dock.height,scanChip));
+   // user 11-22: "카드도 좀 회로 촘촘하게 다시 만들고, 테두리까지 각 살려서 주입되게".
+   // 6 bundles x 4 lines at pitch 5 fill the card; every line ends on the card border, which is itself a trace with
+   // 45 degree chamfered corners drawn down both sides as the bar passes; a pad marks each junction.
+   const float pitch=5;const int lanes=4;float cx0=dock.center.x,chamfer=12;
+   for(int row=0;row<6;row++){
+    float cy=dock.y+dock.height*(.1f+row*.16f);int bend=row%2==0?-1:1;
+    var scanChip=Ui.Box("스캔 회로 칩",root,cx0-7,cy-lanes*pitch/2-3,14,lanes*pitch+6,lineInk,false,1.4f);scanChip.gameObject.SetActive(false);seeds.Add((new Vector2(cx0,cy),(cy-dock.y)/dock.height,scanChip));
     foreach(int dir in new[]{-1,1}){
      for(int i=0;i<lanes;i++){
-      float y=cy+(i-(lanes-1)/2f)*pitch;
-      // mitre: for a 45 degree bend each line starts its bend 0.414 * pitch later than the line inside the turn
-      int inner=bend*dir>0?lanes-1-i:i;float jogX=cx0+dir*(8+10+inner*pitch*.414f),rise=bend*12;
-      var pts=new[]{new Vector2(cx0+dir*8,y),new Vector2(jogX,y),new Vector2(jogX+dir*Mathf.Abs(rise),y+rise),new Vector2(dir<0?dock.x+6:dock.xMax-6,y+rise)};
+      float y=cy+(i-(lanes-1)/2f)*pitch;int inner=bend*dir>0?lanes-1-i:i;float jogX=cx0+dir*(7+8+inner*pitch*.414f),rise=bend*8;
+      var pts=new[]{new Vector2(cx0+dir*7,y),new Vector2(jogX,y),new Vector2(jogX+dir*Mathf.Abs(rise),y+rise),new Vector2(dir<0?dock.x:dock.xMax,y+rise)};
       float total=0;var segs=new Shape[3];
       for(int k=1;k<4;k++){total+=Vector2.Distance(pts[k-1],pts[k]);segs[k-1]=Ui.Line("스캔 회로선",root,pts[k-1],pts[k],lineInk,1.2f);segs[k-1].gameObject.SetActive(false);}
-      var tip=Ui.Box("스캔 회로 끝 패드",root,pts[3].x-2,pts[3].y-2,4,4,Ui.Cyan);tip.gameObject.SetActive(false);traces.Add((seeds.Count-1,pts,total,segs,tip));
+      var tip=Ui.Box("스캔 회로 테두리 접점",root,pts[3].x-2,pts[3].y-2,4,4,Ui.Cyan);tip.gameObject.SetActive(false);traces.Add((seeds.Count-1,pts,total,segs,tip));
      }
     }
    }
+   // card border trace (chamfered), split into two halves from top center down to bottom center
+   Vector2 tl=new Vector2(dock.x,dock.y),br=new Vector2(dock.xMax,dock.yMax);var borderHalves=new List<Vector2[]>();
+   foreach(int dir in new[]{-1,1}){float ex=dir<0?tl.x:br.x;borderHalves.Add(new[]{new Vector2(dock.center.x,tl.y),new Vector2(ex-dir*chamfer,tl.y),new Vector2(ex,tl.y+chamfer),new Vector2(ex,br.y-chamfer),new Vector2(ex-dir*chamfer,br.y),new Vector2(dock.center.x,br.y)});}
+   var borderSegs=new List<(Vector2 a,Vector2 b,Shape glow,Shape line)>();
+   foreach(var half in borderHalves)for(int k=1;k<half.Length;k++){var glow=Ui.Line("카드 테두리 회로 빛",root,half[k-1],half[k],new Color(lineInk.r,lineInk.g,lineInk.b,.25f),6);var line=Ui.Line("카드 테두리 회로",root,half[k-1],half[k],lineInk,1.6f);glow.gameObject.SetActive(false);line.gameObject.SetActive(false);borderSegs.Add((half[k-1],half[k],glow,line));}
+   // reveal the border down to the bar
+   void Border(float barY){foreach(var bs in borderSegs){float len=Vector2.Distance(bs.a,bs.b),shown;
+     if(Mathf.Abs(bs.b.y-bs.a.y)<.01f)shown=barY>=bs.a.y?len:0;else shown=len*Mathf.Clamp01((barY-bs.a.y)/(bs.b.y-bs.a.y));
+     foreach(var g in new[]{bs.glow,bs.line}){g.gameObject.SetActive(shown>0);g.rectTransform.sizeDelta=new Vector2(shown,g.rectTransform.sizeDelta.y);}}}
    // grow: 0 = nothing, 1 = whole trace drawn from its seed
    void Grow(int index,float grow){var tr=traces[index];float d=tr.total*grow;
     for(int i=1;i<4;i++){float len=Vector2.Distance(tr.pts[i-1],tr.pts[i]);var seg=tr.segs[i-1];bool on=d>0&&len>.5f;seg.gameObject.SetActive(on);if(on)seg.rectTransform.sizeDelta=new Vector2(Mathf.Min(d,len),1.2f);d-=len;}
     tr.tip.gameObject.SetActive(grow>=.999f);}
    Phase="fragment";
    for(float t=0;t<1;t+=Delta/.8f){Progress=t;float y=dock.y+dock.height*t;chip.fillAmount=1-t;At(bar.rectTransform,new Vector2(dock.x-8,y-2));At(barGlow.rectTransform,new Vector2(dock.x-16,y-8));
-    for(int i=0;i<seeds.Count;i++)seeds[i].pad.gameObject.SetActive(t>=seeds[i].at);
+    for(int i=0;i<seeds.Count;i++)seeds[i].pad.gameObject.SetActive(t>=seeds[i].at);Border(y);
     for(int i=0;i<traces.Count;i++){float since=(t-seeds[traces[i].seed].at)*.8f;Grow(i,since<=0?0:Ease(Mathf.Clamp01(since/.22f)));}
     yield return null;}
    chip.gameObject.SetActive(false);bar.gameObject.SetActive(false);barGlow.gameObject.SetActive(false);
    for(float t=0;t<.22f;t+=Delta){for(int i=0;i<traces.Count;i++){float since=(1-seeds[traces[i].seed].at)*.8f+t;Grow(i,Ease(Mathf.Clamp01(since/.22f)));}yield return null;}
-   for(int i=0;i<traces.Count;i++)Grow(i,1);
+   for(int i=0;i<traces.Count;i++)Grow(i,1);Border(dock.yMax+1);
    // Absorption: the traces pull back into their pads, the pads gather at the socket exit,
    // and three comets leave the exit along the socket-to-board routes.
    var exit=Routes[1][0];var routeInk=new Color(color.r,color.g,color.b,.18f);
@@ -94,6 +104,7 @@ namespace Breach.UI {
    Phase="absorb-card";
    for(float t=0;t<1;t+=Delta/.7f){Progress=t;float drain=Ease(Mathf.Clamp01(t/.4f)),slide=Ease(Mathf.InverseLerp(.3f,.6f,t));
     for(int i=0;i<traces.Count;i++)Grow(i,1-drain);
+    foreach(var bs in borderSegs){Vector2 a0=Vector2.Lerp(bs.a,exit,slide),b0=Vector2.Lerp(bs.b,exit,slide),dv=b0-a0;foreach(var g in new[]{bs.glow,bs.line}){At(g.rectTransform,a0);g.rectTransform.sizeDelta=new Vector2(dv.magnitude,g.rectTransform.sizeDelta.y);var c=g.color;c.a=(g==bs.glow?.25f:1)*(1-Mathf.InverseLerp(.5f,.7f,t));g.color=c;}}
     for(int i=0;i<seeds.Count;i++){var pad=seeds[i].pad;var half=pad.rectTransform.sizeDelta/2;At(pad.rectTransform,Vector2.Lerp(seeds[i].p,exit+new Vector2(0,(i-1)*4),slide)-half);pad.rectTransform.localScale=Vector3.one*Mathf.Lerp(1,.4f,slide);pad.color=new Color(lineInk.r,lineInk.g,lineInk.b,1-Mathf.InverseLerp(.55f,.7f,t));}
     int index=0;for(int lane=0;lane<3;lane++){float head=Mathf.InverseLerp(.5f+lane*.04f,1,t);
      for(int part=0;part<10;part++){var piece=comets[index++];float h1=head-part*.035f,h0=h1-.035f;bool visible=h1>0&&h0<1;piece.gameObject.SetActive(visible);if(!visible)continue;
