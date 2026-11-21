@@ -156,7 +156,7 @@ namespace Breach.UI
             string last = string.Join("  /  ", events.Skip(Mathf.Max(0, events.Length - 2)));
             summary.text = "ROUND " + c.State.Round + " · 최종 생존 서버  나 " + c.State.Alive(0) + " / 3  ·  상대 " + c.State.Alive(1) + " / 3"
              + "\n이번 해결 서버 파괴  나 " + (mineBefore - c.State.Alive(0)) + "  ·  상대 " + (enemyBefore - c.State.Alive(1))
-             + (last.Length > 0 ? "\n" + last : "") + "\nENTER · 다시 시작    ESC · 타이틀";
+             + (last.Length > 0 ? "\n" + last : "") + "\nENTER · 다시 시작    ESC · 타이틀로 이동";
             c.resultLabel.color = c.State.Winner == 0 ? Ui.Cyan : c.State.Winner == 1 ? Ui.Red : Ui.Gold;
             resultGroup.alpha = 0; c.retryButton.interactable = false; if (TitleButton) TitleButton.interactable = false; c.result.SetActive(true);
             for (float t = 0; t < 1; t += Delta / .42f)
