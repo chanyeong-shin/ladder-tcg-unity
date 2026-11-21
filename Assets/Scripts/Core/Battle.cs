@@ -109,9 +109,14 @@ namespace Breach {
    for(int lane=0;lane<3;lane++)if(blocked.Power[1,lane]>0)blocked.Power[1,lane]--;
    return (1-BlockBelief)*Outcome(open)+BlockBelief*Outcome(blocked);
   }
+  // Board setup for the bot (user 11-22: "내가 아무것도 안하고 턴 넘기면 상대도 아무것도 안하는 느낌"): bot lanes whose
+  // packet would reach a live player server, minus player lanes whose packet would reach a live bot server.
+  // Lets the bot lay rungs (color bridges) for the next round when it has nothing to fire.
+  public const float SetupWeight=3,LastAttackCost=4,CycleBonus=1;
+  static float Setup(Battle v){float s=0;for(int lane=0;lane<3;lane++){if(v.Health[1,lane]>0&&v.Health[0,v.Route(1,lane).End]>0)s++;if(v.Health[0,lane]>0&&v.Health[1,v.Route(0,lane).End]>0)s--;}return s;}
   public bool ChooseBot(out int index,out int target){
    index=-1;target=0;if(Actor!=1||Phase>=2||Winner!=-1)return false;
-   float before=BotValue(-1,0),best=0;var choices=new List<int[]>();
+   float before=BotValue(-1,0),best=0;bool clogged=Hands[1].Count>=4&&!Hands[1].Any(h=>h==Card.Inject||h==Card.ZeroDay);var choices=new List<int[]>();
    for(int i=0;i<Hands[1].Count;i++){
     Card card=Hands[1][i];int count=card==Card.Reroute?18:(card==Card.Buffer||card==Card.Overflow?1:3);
     for(int t=0;t<count;t++){
@@ -122,6 +127,11 @@ namespace Breach {
       score=gain>0?gain*(card==Card.Buffer?2.5f:1.5f):-.5f;
      }else{
       score=BotValue(i,t)-before-(Cards.Enhanced(card)?.65f:.2f);
+      if(card==Card.Reroute){var v=BotView();float s0=Setup(v);v.Play(1,i,t);score+=SetupWeight*(Setup(v)-s0);}
+      // a hand clogged with route/wall cards can never draw an attack card again: spend a harmless one to make room
+      if(clogged&&(card==Card.Reroute||card==Card.Firewall)&&score>=-.66f)score+=CycleBonus;
+      // keep the last attack card for a later round unless it pays for itself now
+      if((card==Card.Inject||card==Card.ZeroDay)&&Hands[1].Count(h=>h==Card.Inject||h==Card.ZeroDay)==1)score-=LastAttackCost;
      }
      if(score>best+.001f){best=score;choices.Clear();choices.Add(new[]{i,t});}
      else if(score>0&&Math.Abs(score-best)<.001f)choices.Add(new[]{i,t});

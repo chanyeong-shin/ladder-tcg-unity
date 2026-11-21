@@ -31,7 +31,8 @@ namespace Breach.UI {
   Image Picture(string name,Transform parent,Sprite sprite,Rect rect){var r=Ui.Rect(name,parent,rect.x,rect.y,rect.width,rect.height);var image=r.gameObject.AddComponent<Image>();image.sprite=sprite;image.raycastTarget=false;return image;}
   public IEnumerator Play(Card card,int owner,Vector2 origin,Vector2 originSize){
    Color color=owner==0?Ui.Cyan:Ui.Red;
-   Sprite sprite=(owner==1||Cards.Enhanced(card))?backImage:cardImages[(int)card];
+   // user 11-22: "봇이 내는 카드 보고 싶음 ... 그냥 다 공개 하자" — the bot's cards show their face when placed
+   Sprite sprite=(owner==0&&Cards.Enhanced(card))?backImage:cardImages[(int)card];
    var root=Root("카드 사용 - 안착 분해 전송");Rect dock=DockRect;
    var chip=Picture("사용 카드",root,sprite,new Rect(origin,originSize));var rect=chip.rectTransform;
    Phase="move";

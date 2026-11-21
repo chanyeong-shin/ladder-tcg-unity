@@ -70,7 +70,7 @@ namespace Breach.UI
             if (EventSystem.current) EventSystem.current.SetSelectedGameObject(null);
             StartCoroutine(Begin());
         }
-        void ReturnToTitle()
+        public void ReturnToTitle()
         {
             StopAllCoroutines(); handTween = null; StopAllEffects();
             beginning = false; busy = false; dragging = false; fromDrop = false; skipping = false; selected = -1; hover = -1;
@@ -93,7 +93,8 @@ namespace Breach.UI
             busy = false; beginning = false; RefreshTargets(); yield return BotFlow();
         }
         void CapturePublic() { publicPower = (int[,])State.Power.Clone(); publicRungs = (int[])State.Rungs.Clone(); publicOwners = (int[])State.RungOwners.Clone(); publicRiders = (int[])State.RungRiders.Clone(); publicSecrets = State.Hidden.Count(s => s.Owner == 1); publicHandCount = State.Hands[1].Count; }
-        bool HideEnemyActions { get { return State.Actor == 1 && State.Phase < 2; } }
+        // user 11-22: every bot action is public the moment it is placed (no hidden defense turn).
+        bool HideEnemyActions { get { return false; } }
         public void Render()
         {
             if (State == null) return; int phase = State.Phase == 2 ? 2 : State.Actor == 0 ? 0 : 1; for (int i = 0; i < 3; i++) backgrounds[i].SetActive(i == phase);
@@ -257,7 +258,7 @@ namespace Breach.UI
             int logMark = log.Count;
             if (!State.Play(owner, index, target)) yield break;
             if (owner == 0) { if (State.UndoSteps == 0) undoLogMarks.Clear(); else undoLogMarks.Add(logMark); }
-            bool enemyAttack = owner == 1 && State.Phase == 0;
+            bool enemyAttack = owner == 1; // all bot actions are shown as they are taken (user 11-22)
             busy = true; HoldDraws(mineBefore, enemyBefore); BuildHand(mineBefore); RefreshTargets();
             Vector2 enemyOrigin = new Vector2(300,188), enemySize = new Vector2(56.875f,91);
             if (owner == 1) {
@@ -269,14 +270,14 @@ namespace Breach.UI
             }
             feedback.speed = animationSpeed;
             yield return feedback.Play(card, owner, owner == 0 ? playOrigin : enemyOrigin, owner == 0 ? playSize : enemySize);
-            string enemyEntry = "상대 · " + (Cards.Enhanced(card) ? "보안 카드 배치" : Cards.Names[(int)card]);
+            string enemyEntry = "상대 · " + Cards.Names[(int)card] + (Cards.Enhanced(card) ? " (발동 때 적용)" : "");
             if (enemyAttack)
             {
                 // Attack-turn actions become public at end of action anyway (spec 7-2), so each one is shown
                 // as it is taken. Security cards show only that one was set (spec 6.3).
                 Note(enemyEntry); CapturePublic(); Render();
                 bool onBoard = !Cards.Enhanced(card) && card != Card.Buffer;
-                statusLabel.text = Cards.Enhanced(card) ? "상대 · 보안 카드 배치 [ ENCRYPTED ]" : card == Card.Inject ? "상대 · 코드 주입 → CH " + (target + 1) : card == Card.Reroute ? "상대 · 라우팅 변경 · " + (Battle.Slot(target) / 2 + 1) + "단 · " + (State.Rungs[Battle.Slot(target) / 2] >= 0 ? RiderName(State.RungRiders[Battle.Slot(target) / 2]) : "제거") : "상대 · 버퍼 적재";
+                statusLabel.text = Cards.Enhanced(card) ? "상대 · " + Cards.Names[(int)card] + (card == Card.Overflow ? "" : " → CH " + (target + 1)) + " · 발동 때 적용" : card == Card.Inject ? "상대 · 코드 주입 → CH " + (target + 1) : card == Card.Reroute ? "상대 · 라우팅 변경 · " + (Battle.Slot(target) / 2 + 1) + "단 · " + (State.Rungs[Battle.Slot(target) / 2] >= 0 ? RiderName(State.RungRiders[Battle.Slot(target) / 2]) : "제거") : "상대 · 버퍼 적재";
                 if (onBoard) yield return feedback.Applied(card, owner, target, card != Card.Reroute || State.Rungs[Battle.Slot(target) / 2] >= 0);
             }
             else if (owner == 1)

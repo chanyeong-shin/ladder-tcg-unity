@@ -16,6 +16,7 @@ namespace Breach.UI {
   public float Amount { get { return show; } }
 
   BattleController host;
+  static float Lum(Color c) { return .2126f * c.r + .7152f * c.g + .0722f * c.b; }
   // user 11-22: blue turn -> red circuit, red turn -> blue circuit (background index as in BattleController.Render)
   Color Tint() { if (!host || host.State == null) return EventFx.Me; int bg = host.State.Phase == 2 ? 2 : host.State.Actor == 0 ? 0 : 1; return bg == 0 ? EventFx.Enemy : EventFx.Me; }
   public void Initialize(BattleController c) {
@@ -44,8 +45,11 @@ namespace Breach.UI {
   void Apply() {
    if (!root) return; float e = show * show * (3 - 2 * show);
    foreach (var d in dims) d.color = new Color(0, 0, 0, .55f * e * dimWeight);
-   screen.Reveal = reveal; var ink = Tint(); screen.color = new Color(ink.r, ink.g, ink.b, .22f * e); screen.SetVerticesDirty();
-   inner.Reveal = 1; inner.color = new Color(ink.r, ink.g, ink.b, Mathf.Max(.073f * e * Mathf.Clamp01(reveal), innerPulse)); inner.SetVerticesDirty();
+   screen.Reveal = reveal; var ink = Tint();
+   // user 11-22: the red circuit should look as bright as the blue one; match perceived luminance (cyan 0.73 vs red 0.45)
+   float gain = Lum(EventFx.Me) / Mathf.Max(.05f, Lum(ink));
+   screen.color = new Color(ink.r, ink.g, ink.b, Mathf.Min(1, .22f * gain) * e); screen.SetVerticesDirty();
+   inner.Reveal = 1; inner.color = new Color(ink.r, ink.g, ink.b, Mathf.Max(.073f * gain * e * Mathf.Clamp01(reveal), innerPulse * gain)); inner.SetVerticesDirty();
   }
   // Activation: one comet per board-bound bundle, staggered over 0.45 s, 0.75 s each, while the circuit stays faint.
   public IEnumerator Activate(System.Func<float> delta, System.Action<float> progress) {

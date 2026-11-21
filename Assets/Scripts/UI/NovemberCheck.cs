@@ -58,7 +58,7 @@ namespace Breach.UI
             yield return Await(()=>attackDone,"combat restore");if(failed)yield break;
             if(c.presentation.PeripheralAlpha!=1||c.presentation.CameraZoom!=1){Fail("Combat focus not restored");yield break;}yield return Shot("11-combat-restored");
             c.resultLabel.text="침투 성공 / ACCESS GRANTED";yield return c.GetComponent<UiSequencePresentation>().Result(report);yield return Shot("12-result");
-            Private("ReturnToTitle");yield return Await(()=>c.titleScreen.Ready,"return title");if(failed)yield break;
+            c.ReturnToTitle();yield return Await(()=>c.titleScreen.Ready,"return title");if(failed)yield break;
             if(c.game.activeSelf||c.result.activeSelf||!c.title.activeSelf){Fail("Return to title failed");yield break;}
             File.WriteAllText(Path.Combine(dir,"november-result.txt"),"PASS: title B animation, four vertical borderless menus, no loading, help/settings, direct start, 3 gradients, enemy attack/defense hand removal and movement, readable turn hold, combat focus and restore, clash, result, return title");Application.Quit(0);
         }

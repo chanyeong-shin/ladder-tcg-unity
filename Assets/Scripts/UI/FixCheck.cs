@@ -95,15 +95,15 @@ namespace Breach.UI
             yield return Await(() => c.CanInput, "player defense"); if (failed) yield break;
             passed.Add("bot attack-turn inject shown on server " + (lane + 1) + " before the bot ends its action");
 
-            // 2b. Bot defense turn: card back moves, target and kind stay hidden until resolve.
+            // 2b. Bot defense turn (user 11-22: all bot cards public): the card is named and shown on the board at once.
             Reset(0, 1); c.State.Power[0, 1] = 1; c.State.Hands[1].Add(Card.Inject); c.State.SaveAction(); Private("CapturePublic"); c.Render(); yield return null;
             string logBefore = c.logText.text;
             StartCoroutine((IEnumerator)Private("BotFlow"));
-            yield return Await(() => c.statusLabel.text.Contains("비공개 행동"), "enemy defense hidden"); if (failed) yield break;
+            yield return Await(() => c.statusLabel.text.Contains("상대 · 코드 주입"), "enemy defense shown"); if (failed) yield break;
             if (c.State.Phase != 1) { Fail("Bot defense already resolved"); yield break; }
-            if (c.servers.Any(v => v.owner == 1 && v.number.text != "0")) { Fail("Bot defense revealed before resolve"); yield break; }
-            if (c.logText.text != logBefore) { Fail("Bot defense card named before resolve"); yield break; }
-            yield return Shot("05-enemy-defense-hidden");
+            if (!c.servers.Any(v => v.owner == 1 && v.number.text != "0")) { Fail("Bot defense not shown on its server"); yield break; }
+            if (c.logText.text == logBefore) { Fail("Bot defense card not named in the log"); yield break; }
+            yield return Shot("05-enemy-defense-shown");
 
             // 1. Skip the whole resolve flight: camera, CRT and effects restore; control returns to me.
             yield return Await(() => c.presentation.Phase == "flight", "resolve flight"); if (failed) yield break;
@@ -124,7 +124,7 @@ namespace Breach.UI
             var crt = FindFirstObjectByType<CrtOverlay>();
             if (c.presentation.CameraZoom != 1 || c.presentation.Phase != "idle" || c.fx.childCount != 0 || (crt && crt.Burst != 0) || c.Skipping || c.feedback.Phase != "idle") { Fail("Skip left presentation state"); yield break; }
             yield return Shot("08-after-skip-control");
-            passed.Add("bot defense hidden until resolve; one skip ended the resolve flight in " + skipFrames + " frames (" + skipSeconds.ToString("0.00") + "s) and stopped at the next caption; " + presses + " further presses reached player input; camera/CRT/fx restored, servers match state");
+            passed.Add("bot defense shown when placed; one skip ended the resolve flight in " + skipFrames + " frames (" + skipSeconds.ToString("0.00") + "s) and stopped at the next caption; " + presses + " further presses reached player input; camera/CRT/fx restored, servers match state");
 
             File.WriteAllText(Path.Combine(dir, "fix-result.txt"), "PASS: " + string.Join("; ", passed)); Application.Quit(0);
         }

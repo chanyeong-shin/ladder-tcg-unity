@@ -31,14 +31,22 @@ namespace Breach.UI
         static float Ease(float t) { t = Mathf.Clamp01(t); return t * t * (3 - 2 * t); }
         static CanvasGroup Group(GameObject item) { var group = item.GetComponent<CanvasGroup>(); return group ? group : item.AddComponent<CanvasGroup>(); }
 
+        public Button TitleButton { get; private set; }
         public void Initialize(BattleController controller)
         {
             c = controller;
             resultGroup = Group(c.result);
-            summary = Ui.Text("확정 결과 요약", c.result.transform, 300, 645, 1320, 150, "", c.font, 19, new Color(.7f, .82f, .86f));
+            // user 11-22: a "go to title" button under 다시 시작 / RECONNECT, both with a vertical bloom that brightens on hover
+            var titleButton = Instantiate(c.retryButton.gameObject, c.result.transform).GetComponent<Button>(); titleButton.name = "타이틀로 이동";
+            var tr = (RectTransform)titleButton.transform; tr.anchoredPosition = ((RectTransform)c.retryButton.transform).anchoredPosition + new Vector2(0, -85);
+            titleButton.onClick = new Button.ButtonClickedEvent(); titleButton.onClick.AddListener(() => { if (c.result.activeSelf) c.ReturnToTitle(); });
+            foreach (var label in titleButton.GetComponentsInChildren<TMP_Text>(true)) label.text = "타이틀로 이동 / TITLE";
+            TitleButton = titleButton;
+            foreach (var b in new[] { c.retryButton, titleButton }) b.gameObject.AddComponent<ResultButtonFx>();
+            summary = Ui.Text("확정 결과 요약", c.result.transform, 300, 730, 1320, 150, "", c.font, 19, new Color(.7f, .82f, .86f));
             summary.alignment = TextAlignmentOptions.Center;
             summary.textWrappingMode = TextWrappingModes.Normal;
-            foreach (var rect in new[] { c.resultLabel.rectTransform, (RectTransform)c.retryButton.transform, summary.rectTransform })
+            foreach (var rect in new[] { c.resultLabel.rectTransform, (RectTransform)c.retryButton.transform, (RectTransform)titleButton.transform, summary.rectTransform })
             {
                 resultParts.Add(rect); resultHomes.Add(rect.anchoredPosition);
             }
@@ -150,7 +158,7 @@ namespace Breach.UI
              + "\n이번 해결 서버 파괴  나 " + (mineBefore - c.State.Alive(0)) + "  ·  상대 " + (enemyBefore - c.State.Alive(1))
              + (last.Length > 0 ? "\n" + last : "") + "\nENTER · 다시 시작    ESC · 타이틀";
             c.resultLabel.color = c.State.Winner == 0 ? Ui.Cyan : c.State.Winner == 1 ? Ui.Red : Ui.Gold;
-            resultGroup.alpha = 0; c.retryButton.interactable = false; c.result.SetActive(true);
+            resultGroup.alpha = 0; c.retryButton.interactable = false; if (TitleButton) TitleButton.interactable = false; c.result.SetActive(true);
             for (float t = 0; t < 1; t += Delta / .42f)
             {
                 float e = Ease(t); resultGroup.alpha = e;
@@ -164,6 +172,7 @@ namespace Breach.UI
             if (resultGroup) resultGroup.alpha = 1;
             for (int i = 0; i < resultParts.Count; i++) if (resultParts[i]) resultParts[i].anchoredPosition = resultHomes[i];
             if (c && c.retryButton) c.retryButton.interactable = true;
+            if (TitleButton) TitleButton.interactable = true;
         }
         public void Cancel()
         {
