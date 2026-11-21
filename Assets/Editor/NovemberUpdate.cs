@@ -46,6 +46,17 @@ namespace Breach.EditorTools
             // descent 0.288 em, line 1.448 em); Do Hyeon reports 0.8 / 0.2 / 1.25, so top-aligned text rose by 0.36 em.
             // Give the Do Hyeon asset Noto's line metrics so existing boxes keep their baselines.
             var face=font.faceInfo;float em=face.pointSize;face.ascentLine=1.16f*em;face.descentLine=-.288f*em;face.lineHeight=1.448f*em;font.faceInfo=face;EditorUtility.SetDirty(font);AssetDatabase.SaveAssets();
+            // Pre-render every character the game uses so no glyph is rasterized mid-animation (a dynamic font
+            // otherwise stalls the frame the first time a new Korean character appears, e.g. "서버 앞 차단").
+            var used=new System.Text.StringBuilder();for(int ch=32;ch<127;ch++)used.Append((char)ch);
+            foreach(var file in System.IO.Directory.GetFiles("Assets/Scripts","*.cs",System.IO.SearchOption.AllDirectories))foreach(char ch in System.IO.File.ReadAllText(file))if(ch>=0xAC00&&ch<=0xD7A3||ch>=0x2000&&ch<=0x27FF)used.Append(ch);
+            foreach(var t in UnityEngine.Object.FindObjectsByType<TMP_Text>(FindObjectsInactive.Include,FindObjectsSortMode.None))used.Append(t.text);
+            font.TryAddCharacters(used.ToString(),out string missing);
+            // Do Hyeon has no "·" or "—": fall back to Noto Sans KR for those
+            var noto=AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/Fonts/NotoSansKR-Regular SDF.asset");if(noto){if(font.fallbackFontAssetTable==null)font.fallbackFontAssetTable=new System.Collections.Generic.List<TMP_FontAsset>();if(!font.fallbackFontAssetTable.Contains(noto))font.fallbackFontAssetTable.Add(noto);}
+            foreach(var tex in font.atlasTextures)if(tex&&!AssetDatabase.IsSubAsset(tex)&&!AssetDatabase.Contains(tex)){tex.name="DoHyeon-Regular Atlas";AssetDatabase.AddObjectToAsset(tex,font);}
+            EditorUtility.SetDirty(font);AssetDatabase.SaveAssets();
+            Debug.Log("DoHyeon atlas: "+font.characterTable.Count+" characters, "+font.atlasTextures.Length+" atlas page(s), missing: "+missing);
             bool Keep(TMP_Text t)=>c.titleFont&&t.font==c.titleFont;
             foreach(var t in UnityEngine.Object.FindObjectsByType<TMP_Text>(FindObjectsInactive.Include,FindObjectsSortMode.None))if(!Keep(t)){t.font=font;EditorUtility.SetDirty(t);}
             foreach(string guid in AssetDatabase.FindAssets("t:Prefab",new[]{"Assets/Prefabs"})){
