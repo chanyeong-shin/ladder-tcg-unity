@@ -27,7 +27,7 @@ namespace Breach.UI
             if (!c.rungTargets.All(b => b.gameObject.activeSelf)) { Fail("Rung targets missing"); yield break; }
             c.Preview(1, false); if (c.paths.childCount != 0) { Fail("Rung card previewed a vertical channel path"); yield break; }
             c.Preview(2, true); if (c.paths.childCount == 0) { Fail("Rung preview missing"); yield break; }
-            yield return Shot("01-rung-targets"); c.ClearPreview();
+            yield return Shot("01-rung-targets"); c.ClearPreview(); yield return null;
             // Drop over the middle vertical line between two rung slots: must not be used.
             var held = c.hand.GetComponentsInChildren<CardView>().First(v => v.index == 0);
             var drag = new PointerEventData(EventSystem.current) { position = Screen(held.transform.TransformPoint(new Vector3(50, -50, 0))) };
@@ -36,6 +36,14 @@ namespace Breach.UI
             held.OnEndDrag(drag); yield return Await(() => c.CanInput, "rung return"); if (failed) yield break;
             if (c.State.Hands[0].Count != 1 || c.State.Rungs.Any(r => r >= 0)) { Fail("Rung card was used on a vertical line"); yield break; }
             c.Select(0); c.Use(1, false); yield return null; if (c.State.Hands[0].Count != 1) { Fail("Rung card accepted a channel target"); yield break; }
+            // Color bridge B: an empty slot shows three dots; anything but a dot cancels the card.
+            c.Use(2, true); yield return null; if (!c.BridgeOpen || c.CanInput) { Fail("Color bridge dots did not open"); yield break; }
+            yield return Shot("01b-color-bridge-dots"); c.CancelBridge(); yield return null;
+            if (c.BridgeOpen || c.State.Hands[0].Count != 1 || c.State.Rungs.Any(r => r >= 0) || c.paths.childCount != 0) { Fail("Color bridge cancel left the card used"); yield break; }
+            c.Select(0); yield return new WaitForSecondsRealtime(.7f);
+            var hold = c.GetComponent<CardHoldFx>(); if (!hold || !hold.Visible || hold.Amount < .99f) { Fail("Card hold dim/circuit not shown for a held card"); yield break; }
+            yield return Shot("01c-card-hold-circuit");
+            passed.Add("color bridge: dots open on an empty slot, cancel returns the card; holding a card shows the dim layer and circuit");
             c.Select(0); Reset(0, 0); c.State.Hands[0].Add(Card.Inject); c.State.SaveAction(); c.Render(); c.Select(0); yield return null;
             if (!c.laneTargets.All(b => b.gameObject.activeSelf)) { Fail("Channel targets not restored for inject"); yield break; }
             c.Select(0);
@@ -44,7 +52,8 @@ namespace Breach.UI
             // 5/6. One action per undo; a draw locks itself and everything before it.
             Reset(0, 0); c.State.Hands[0].Add(Card.Inject); c.State.Hands[0].Add(Card.Reroute); c.State.Hands[0].Add(Card.Inject); c.State.SaveAction(); c.Render(); yield return null;
             c.Select(0); c.Use(0, false); yield return Await(() => c.CanInput, "play 1"); if (failed) yield break;
-            c.Select(0); c.Use(0, true); yield return Await(() => c.CanInput, "play 2"); if (failed) yield break;
+            c.Select(0); c.Use(0, true); yield return null; if (!c.BridgeOpen) { Fail("Color bridge dots missing"); yield break; } c.PickBridge(Battle.Mine); yield return Await(() => c.CanInput, "play 2"); if (failed) yield break;
+            if (c.State.RungRiders[0] != 0) { Fail("Blue dot did not make a mine-only rung"); yield break; }
             c.Select(0); c.Use(2, false); yield return Await(() => c.CanInput, "play 3"); if (failed) yield break;
             if (!c.undoButton.interactable) { Fail("Undo disabled after plays"); yield break; }
             c.undoButton.onClick.Invoke(); yield return null;

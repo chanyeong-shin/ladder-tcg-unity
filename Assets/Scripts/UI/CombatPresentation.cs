@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -54,6 +54,7 @@ namespace Breach.UI
                     pin.anchoredPosition=new Vector2(pin.anchoredPosition.x,-BattleController.RowY[row]+pin.rect.height/2);
                 }
                 contacts.SetAsLastSibling();
+                ViaBus(board, contacts);
                 foreach(Transform item in background.transform) {
                     var r=item as RectTransform;if(!r||r==board||r==surface)continue;
                     if(r.anchoredPosition.x+r.rect.width<=582||r.anchoredPosition.x>=1382||-r.anchoredPosition.y+r.rect.height<=129||-r.anchoredPosition.y>=845) Dim(item.gameObject);
@@ -62,6 +63,28 @@ namespace Breach.UI
             Track(c.rungs); Track(c.paths); foreach (var server in c.servers) Track((RectTransform)server.transform);
             layer = Ui.Rect("공격 연출 - 카메라 연동", c.game.transform, 0, 0, 1920, 1080); layer.SetAsLastSibling(); Track(layer);
             foreach(var item in new GameObject[]{c.hand.gameObject,c.endButton.gameObject,c.undoButton.gameObject,c.logButton.gameObject,c.roundLabel.gameObject,c.statusLabel.gameObject,c.secretLabel.gameObject})Dim(item);
+        }
+        // Board (2026-11-21 selection): contacts become via rings (20 px, 3 px #7fe9ff rim, #07131a inside)
+        // above a three-line bus per vertical line (3 px #3aa6c6 center, 1 px #337a94 at +-7.5 px, no glow).
+        Vector2 StagePoint(Vector3 world){var p=c.stage.InverseTransformPoint(world);return new Vector2(p.x-c.stage.rect.xMin,c.stage.rect.yMax-p.y);}
+        Rect StageRect(RectTransform r){var corners=new Vector3[4];r.GetWorldCorners(corners);var a=StagePoint(corners[1]);var b=StagePoint(corners[3]);return Rect.MinMaxRect(Mathf.Min(a.x,b.x),Mathf.Min(a.y,b.y),Mathf.Max(a.x,b.x),Mathf.Max(a.y,b.y));}
+        void ViaBus(RectTransform board,RectTransform contacts)
+        {
+            float[] top={231,231,231},bottom={763,763,763};bool[] found=new bool[3];
+            foreach(var g in board.GetComponentsInChildren<Graphic>(true)){
+                if(g.transform.IsChildOf(contacts))continue;var r=StageRect(g.rectTransform);if(r.width>10||r.height<250)continue;
+                for(int lane=0;lane<3;lane++)if(Mathf.Abs(r.center.x-BattleController.LaneX[lane])<12){g.enabled=false;if(!found[lane]){top[lane]=r.yMin;bottom[lane]=r.yMax;found[lane]=true;}else{top[lane]=Mathf.Min(top[lane],r.yMin);bottom[lane]=Mathf.Max(bottom[lane],r.yMax);}}
+            }
+            var bus=Ui.Rect("세로선 - 세 줄 버스",board,0,0,1920,1080);bus.SetSiblingIndex(contacts.GetSiblingIndex());
+            var center=new Color(.227f,.651f,.776f);var side=new Color(.2f,.478f,.58f);
+            for(int lane=0;lane<3;lane++){float x=BattleController.LaneX[lane];
+                Ui.Line("버스 가운데",bus,new Vector2(x,top[lane]),new Vector2(x,bottom[lane]),center,3);
+                Ui.Line("버스 왼쪽",bus,new Vector2(x-7.5f,top[lane]),new Vector2(x-7.5f,bottom[lane]),side,1);
+                Ui.Line("버스 오른쪽",bus,new Vector2(x+7.5f,top[lane]),new Vector2(x+7.5f,bottom[lane]),side,1);}
+            var pins=contacts.Cast<Transform>().OfType<RectTransform>().ToArray();
+            foreach(var pin in pins){var r=StageRect(pin);foreach(var g in pin.GetComponentsInChildren<Graphic>(true))g.enabled=false;
+                var ring=Ui.Box("접점 - 비아 고리",contacts,r.center.x-10,r.center.y-10,20,20,new Color(.498f,.914f,1),true,1,32);
+                Ui.Box("비아 고리 안",ring.transform,3,3,14,14,new Color(.027f,.075f,.102f),true,1,32);}
         }
         void Dim(GameObject item){var group=item.GetComponent<CanvasGroup>();if(!group)group=item.AddComponent<CanvasGroup>();peripheral.Add(group);peripheralAlpha.Add(group.alpha);}
         void SetPeripheral(float weight){PeripheralAlpha=Mathf.Lerp(1,.48f,Mathf.Clamp01(weight));for(int i=0;i<peripheral.Count;i++)if(peripheral[i])peripheral[i].alpha=peripheralAlpha[i]*PeripheralAlpha;}

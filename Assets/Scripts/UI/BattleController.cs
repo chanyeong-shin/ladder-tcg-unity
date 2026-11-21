@@ -21,7 +21,12 @@ namespace Breach.UI
         int EnemyHandShown { get { return State == null ? 0 : Mathf.Min(visibleEnemyLimit, HideEnemyActions ? publicHandCount : State.Hands[1].Count); } }
         RectTransform hints; Button socketTarget; Coroutine handTween; Vector2 playOrigin, playSize; bool fromDrop;
         public Battle State { get; private set; }
-        public bool CanInput { get { return State != null && State.Winner == -1 && State.Actor == 0 && State.Phase < 2 && !busy && game.activeSelf; } }
+        public bool CanInput { get { return State != null && State.Winner == -1 && State.Actor == 0 && State.Phase < 2 && !busy && !bridge && game.activeSelf; } }
+        CardHoldFx hold; BridgeDots bridge; bool bridgeChosen; public bool BridgeOpen { get { return bridge; } }
+        public void PickBridge(int color) { if (bridge) bridge.Choose(color); }
+        public void CancelBridge() { if (bridge) bridge.Cancel(); }
+        public static string RiderName(int rider) { return rider < 0 ? "양쪽" : rider == 0 ? "나만" : "상대만"; }
+        public static Color RiderColor(int rider) { return rider < 0 ? Ui.Gold : rider == 0 ? Ui.Cyan : Ui.Red; }
         bool busy, dragging, skipping; int selected = -1, hover = -1; CardView dragged; TMP_Text skipHint;
         readonly List<int> undoLogMarks = new List<int>();
         // Space or a click fast-forwards every running presentation through its normal code path,
@@ -30,12 +35,12 @@ namespace Breach.UI
         public bool Skipping { get { return skipping; } }
         public float PlaybackSpeed { get { return skipping ? SkipSpeed : animationSpeed; } }
         readonly List<CardView> cards = new List<CardView>(); readonly List<string> log = new List<string>();
-        int[,] publicPower = new int[2, 3]; int[] publicRungs = { -1, -1, -1 }; int[] publicOwners = { -1, -1, -1 }; int publicSecrets, publicHandCount; readonly List<string> deferredLog = new List<string>(); readonly List<Secret> deferredEffects = new List<Secret>();
+        int[,] publicPower = new int[2, 3]; int[] publicRungs = { -1, -1, -1 }; int[] publicOwners = { -1, -1, -1 }; int[] publicRiders = { -1, -1, -1 }; int publicSecrets, publicHandCount; readonly List<string> deferredLog = new List<string>(); readonly List<Secret> deferredEffects = new List<Secret>();
         public static readonly float[] LaneX = { 702, 982, 1262 }; public static readonly float[] RowY = { 364, 497, 630 };
         void Start()
         {
             titleScreen = gameObject.AddComponent<TitleBScreen>(); titleScreen.Initialize(this);
-            presentation = gameObject.AddComponent<CombatPresentation>(); presentation.Initialize(this); sequences = gameObject.AddComponent<UiSequencePresentation>(); sequences.Initialize(this); gameObject.AddComponent<Week9Check>(); gameObject.AddComponent<NovemberCheck>(); gameObject.AddComponent<FixCheck>(); startButton.onClick.AddListener(RequestBegin); retryButton.onClick.AddListener(RequestBegin); endButton.onClick.AddListener(EndTurn); undoButton.onClick.AddListener(Undo); logButton.onClick.AddListener(() => logPanel.SetActive(!logPanel.activeSelf));
+            presentation = gameObject.AddComponent<CombatPresentation>(); presentation.Initialize(this); sequences = gameObject.AddComponent<UiSequencePresentation>(); sequences.Initialize(this); gameObject.AddComponent<Week9Check>(); gameObject.AddComponent<NovemberCheck>(); gameObject.AddComponent<FixCheck>(); hold = gameObject.AddComponent<CardHoldFx>(); hold.Initialize(this); startButton.onClick.AddListener(RequestBegin); retryButton.onClick.AddListener(RequestBegin); endButton.onClick.AddListener(EndTurn); undoButton.onClick.AddListener(Undo); logButton.onClick.AddListener(() => logPanel.SetActive(!logPanel.activeSelf));
             for (int i = 0; i < laneTargets.Length; i++) { int t = i; laneTargets[i].onClick.AddListener(() => Use(t, false)); }
             for (int i = 0; i < rungTargets.Length; i++) { int t = i; rungTargets[i].onClick.AddListener(() => Use(t, true)); }
             hints = Ui.Rect("배치 가능한 지점", game.transform, 0, 0, 1920, 1080); hints.SetSiblingIndex(paths.GetSiblingIndex() + 1);
@@ -51,7 +56,8 @@ namespace Breach.UI
             if (skipHint) { bool show = busy && !skipping && game.activeSelf && !result.activeSelf; if (skipHint.gameObject.activeSelf != show) skipHint.gameObject.SetActive(show); }
             if (Input.GetKeyDown(KeyCode.Return) && result.activeSelf) { RequestBegin(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && result.activeSelf) { ReturnToTitle(); return; }
-            if (Input.GetKeyDown(KeyCode.Escape) && CanInput) { selected = -1; ClearPreview(); LayoutHand(-1); RefreshTargets(); }
+            if (Input.GetKeyDown(KeyCode.Escape) && bridge) CancelBridge();
+            else if (Input.GetKeyDown(KeyCode.Escape) && CanInput) { selected = -1; hold.Hide(); ClearPreview(); LayoutHand(-1); RefreshTargets(); }
             if (Input.GetKeyDown(KeyCode.Return) && CanInput) EndTurn();
         }
         public void SkipPresentation() { if (State != null && busy && !dragging && game.activeSelf && !result.activeSelf) skipping = true; }
@@ -86,7 +92,7 @@ namespace Breach.UI
             Render(); yield return DrawFeedback(0, 0); yield return TurnFeedback();
             busy = false; beginning = false; RefreshTargets(); yield return BotFlow();
         }
-        void CapturePublic() { publicPower = (int[,])State.Power.Clone(); publicRungs = (int[])State.Rungs.Clone(); publicOwners = (int[])State.RungOwners.Clone(); publicSecrets = State.Hidden.Count(s => s.Owner == 1); publicHandCount = State.Hands[1].Count; }
+        void CapturePublic() { publicPower = (int[,])State.Power.Clone(); publicRungs = (int[])State.Rungs.Clone(); publicOwners = (int[])State.RungOwners.Clone(); publicRiders = (int[])State.RungRiders.Clone(); publicSecrets = State.Hidden.Count(s => s.Owner == 1); publicHandCount = State.Hands[1].Count; }
         bool HideEnemyActions { get { return State.Actor == 1 && State.Phase < 2; } }
         public void Render()
         {
@@ -115,8 +121,8 @@ namespace Breach.UI
         void Clear(Transform root) { for (int i = root.childCount - 1; i >= 0; i--) { var g = root.GetChild(i).gameObject; g.SetActive(false); Destroy(g); } }
         void RefreshBoard(bool showWalls = true)
         {
-            Clear(rungs); var rows = HideEnemyActions ? publicRungs : State.Rungs; var owners = HideEnemyActions ? publicOwners : State.RungOwners;
-            for (int row = 0; row < 3; row++) { if (rows[row] >= 0) { int c = rows[row];float inset=row==1?7:4.5f; Ui.Line("회선 " + (row + 1), rungs, new Vector2(LaneX[c]+inset, RowY[row]), new Vector2(LaneX[c + 1]-inset, RowY[row]), owners[row] == 0 ? Ui.Cyan : Ui.Red, 4); } else for (int edge = 0; edge < 2; edge++) for (int k = 0; k < 9; k++) Ui.Line("빈 배치 자리", rungs, new Vector2(LaneX[edge] + 20 + k * 27, RowY[row]), new Vector2(LaneX[edge] + 30 + k * 27, RowY[row]), new Color(.15f, .26f, .3f, .6f), 1); }
+            Clear(rungs); var rows = HideEnemyActions ? publicRungs : State.Rungs; var riders = HideEnemyActions ? publicRiders : State.RungRiders;
+            for (int row = 0; row < 3; row++) { if (rows[row] >= 0) { int c = rows[row];float inset=row==1?7:4.5f; Ui.Line("회선 " + (row + 1), rungs, new Vector2(LaneX[c]+inset, RowY[row]), new Vector2(LaneX[c + 1]-inset, RowY[row]), RiderColor(riders[row]), 4); } else for (int edge = 0; edge < 2; edge++) for (int k = 0; k < 9; k++) Ui.Line("빈 배치 자리", rungs, new Vector2(LaneX[edge] + 20 + k * 27, RowY[row]), new Vector2(LaneX[edge] + 30 + k * 27, RowY[row]), new Color(.15f, .26f, .3f, .6f), 1); }
             if(showWalls)foreach(var point in CombatPresentation.FirewallEndpoints(State))CombatPresentation.Firewall(rungs,point.x,point.y);
         }
         void HoldDraws(int mineBefore, int enemyBefore, bool showEnemy = true)
@@ -178,8 +184,8 @@ namespace Breach.UI
             for (float t = instant ? 1 : 0; t < 1; t += Time.unscaledDeltaTime / .15f) { float e = t * t * (3 - 2 * t); for (int i = 0; i < views.Length; i++) if (views[i]) { ((RectTransform)views[i].transform).anchoredPosition = Vector2.Lerp(starts[i], ends[i], e); views[i].transform.localScale = Vector3.one * Mathf.Lerp(scales[i], sizes[i], e); } yield return null; }
             for (int i = 0; i < views.Length; i++) if (views[i]) { ((RectTransform)views[i].transform).anchoredPosition = ends[i]; views[i].transform.localScale = Vector3.one * sizes[i]; }
         }
-        public void Select(int index) { if (!CanInput || index < 0 || index >= cards.Count) return; selected = selected == index ? -1 : index; LayoutHand(selected); RefreshTargets(); }
-        public void BeginDrag(CardView v) { if (!CanInput) return; if (handTween != null) StopCoroutine(handTween); ClearPreview(); selected = v.index; dragging = true; dragged = v; v.transform.SetParent(stage, false); v.transform.SetAsLastSibling(); var g = v.gameObject.AddComponent<CanvasGroup>(); g.blocksRaycasts = false; RefreshTargets(); }
+        public void Select(int index) { if (!CanInput || index < 0 || index >= cards.Count) return; selected = selected == index ? -1 : index; if (selected >= 0) hold.Show(); else hold.Hide(); LayoutHand(selected); RefreshTargets(); }
+        public void BeginDrag(CardView v) { if (!CanInput) return; if (handTween != null) StopCoroutine(handTween); ClearPreview(); hold.Show(); selected = v.index; dragging = true; dragged = v; v.transform.SetParent(stage, false); v.transform.SetAsLastSibling(); var g = v.gameObject.AddComponent<CanvasGroup>(); g.blocksRaycasts = false; RefreshTargets(); }
         public int AmmoDropTarget(Vector2 screen) { if (!dragging || selected < 0 || selected >= State.Hands[0].Count) return -1; Card card = State.Hands[0][selected]; if (card != Card.Inject && card != Card.ZeroDay) return -1; Vector2 p; RectTransformUtility.ScreenPointToLocalPointInRectangle(stage, screen, null, out p); p.y = -p.y; if (p.y < 231 || p.y > 832) return -1; int lane = Enumerable.Range(0, 3).OrderBy(i => Mathf.Abs(p.x - LaneX[i])).First(); float width = p.y >= 722 ? 50 : 28; return Mathf.Abs(p.x - LaneX[lane]) <= width && State.CanPlay(0, selected, lane) ? lane : -1; }
         public void Drop(Vector2 screen)
         {
@@ -194,7 +200,7 @@ namespace Breach.UI
             if (target >= 0 && State.CanPlay(0, index, target)) { fromDrop = true; if (v) { v.gameObject.SetActive(false); Destroy(v.gameObject); } Use(target, rung); return; }
             selected = -1; StartCoroutine(ReturnCard(v));
         }
-        IEnumerator ReturnCard(CardView view) { busy = true; ClearPreview(); RefreshTargets(); if (view) view.transform.SetParent(hand, false); LayoutHand(-1); yield return new WaitForSecondsRealtime(.18f); busy = false; fromDrop = false; Render(); statusLabel.text = "배치 취소 · 손패로 돌아왔습니다."; }
+        IEnumerator ReturnCard(CardView view) { busy = true; hold.Hide(); ClearPreview(); RefreshTargets(); if (view) view.transform.SetParent(hand, false); LayoutHand(-1); yield return new WaitForSecondsRealtime(.18f); busy = false; fromDrop = false; Render(); statusLabel.text = "배치 취소 · 손패로 돌아왔습니다."; }
         public void RefreshTargets()
         {
             bool input = CanInput; endButton.interactable = input; undoButton.interactable = input && State.CanUndo; if (hints) Clear(hints); bool selectedCard = input && selected >= 0 && selected < State.Hands[0].Count; Card card = selectedCard ? State.Hands[0][selected] : Card.Inject;
@@ -216,7 +222,22 @@ namespace Breach.UI
         }
         public void ClearPreview() { Clear(paths); }
         public void PreviewServer(int owner, int channel) { if (State == null || busy) return; int amount = owner == 1 && HideEnemyActions ? publicPower[owner, channel] : State.Power[owner, channel]; if (amount <= 0) return; ClearPreview(); var packet = State.Route(owner, channel); var points = Points(packet); for (int i = 1; i < points.Count; i++) Ui.Line("장전 패킷 경로", paths, points[i - 1], points[i], Ui.Gold, 3); }
-        public void Use(int target, bool rung) { if (!CanInput || selected < 0 || selected >= State.Hands[0].Count) return; if ((State.Hands[0][selected] == Card.Reroute) != rung) return; if (!State.CanPlay(0, selected, target)) { statusLabel.text = "이 위치에는 사용할 수 없습니다."; return; } int i = selected; if (!fromDrop && i < cards.Count && cards[i]) { var r = (RectTransform)cards[i].transform; playOrigin = new Vector2(r.anchoredPosition.x, -r.anchoredPosition.y); playSize = r.sizeDelta * r.localScale.x; } fromDrop = false; selected = -1; ClearPreview(); StartCoroutine(Play(0, i, target)); }
+        public void Use(int target, bool rung) { if (!CanInput || selected < 0 || selected >= State.Hands[0].Count) return; if ((State.Hands[0][selected] == Card.Reroute) != rung) return;
+            bool chosen = bridgeChosen; bridgeChosen = false;
+            if (!chosen && rung && target < 6 && State.Rungs[target / 2] == -1 && State.CanPlay(0, selected, target)) { OpenBridge(target); return; } if (!State.CanPlay(0, selected, target)) { statusLabel.text = "이 위치에는 사용할 수 없습니다."; return; } int i = selected; if (!fromDrop && i < cards.Count && cards[i]) { var r = (RectTransform)cards[i].transform; playOrigin = new Vector2(r.anchoredPosition.x, -r.anchoredPosition.y); playSize = r.sizeDelta * r.localScale.x; } fromDrop = false; selected = -1; ClearPreview(); StartCoroutine(Play(0, i, target)); }
+        // Color bridge B: the dropped rung waits as a gold line with three dots; a dot decides who rides it.
+        void OpenBridge(int slot)
+        {
+            int index = selected; bool dropped = fromDrop;
+            if (!dropped && index < cards.Count && cards[index]) { var r = (RectTransform)cards[index].transform; playOrigin = new Vector2(r.anchoredPosition.x, -r.anchoredPosition.y); playSize = r.sizeDelta * r.localScale.x; }
+            ClearPreview(); Vector2 a = new Vector2(LaneX[slot % 2] + 12, RowY[slot / 2]), b = new Vector2(LaneX[slot % 2 + 1] - 12, RowY[slot / 2]);
+            Ui.Line("놓는 중인 가로선", paths, a, b, new Color(1, .8f, .2f, .8f), 4);
+            statusLabel.text = "점을 골라 이 가로선을 탈 쪽을 정하세요 · 파랑 나만 · 노랑 양쪽 · 빨강 상대만 · 다른 곳을 누르면 취소";
+            bridge = BridgeDots.Show(game.transform, (a + b) / 2, font,
+                color => { bridge = null; selected = index; fromDrop = dropped; bridgeChosen = true; Use(Battle.RungTarget(slot, color), true); bridgeChosen = false; },
+                () => { bridge = null; selected = -1; fromDrop = false; hold.Hide(); ClearPreview(); Render(); LayoutHand(-1); statusLabel.text = "배치 취소 · 카드를 손패로 돌렸습니다."; });
+            RefreshTargets();
+        }
         IEnumerator Play(int owner, int index, int target)
         {
             Card card = State.Hands[owner][index];
@@ -244,8 +265,8 @@ namespace Breach.UI
                 // as it is taken. Security cards show only that one was set (spec 6.3).
                 Note(enemyEntry); CapturePublic(); Render();
                 bool onBoard = !Cards.Enhanced(card) && card != Card.Buffer;
-                statusLabel.text = Cards.Enhanced(card) ? "상대 · 보안 카드 배치 [ ENCRYPTED ]" : card == Card.Inject ? "상대 · 코드 주입 → CH " + (target + 1) : card == Card.Reroute ? "상대 · 라우팅 변경 · " + (target / 2 + 1) + "단" : "상대 · 버퍼 적재";
-                if (onBoard) yield return feedback.Applied(card, owner, target, card != Card.Reroute || State.Rungs[target / 2] >= 0);
+                statusLabel.text = Cards.Enhanced(card) ? "상대 · 보안 카드 배치 [ ENCRYPTED ]" : card == Card.Inject ? "상대 · 코드 주입 → CH " + (target + 1) : card == Card.Reroute ? "상대 · 라우팅 변경 · " + (Battle.Slot(target) / 2 + 1) + "단 · " + (State.Rungs[Battle.Slot(target) / 2] >= 0 ? RiderName(State.RungRiders[Battle.Slot(target) / 2]) : "제거") : "상대 · 버퍼 적재";
+                if (onBoard) yield return feedback.Applied(card, owner, target, card != Card.Reroute || State.Rungs[Battle.Slot(target) / 2] >= 0);
             }
             else if (owner == 1)
             {
@@ -253,7 +274,7 @@ namespace Breach.UI
                 deferredLog.Add(enemyEntry); if (!Cards.Enhanced(card) && card != Card.Buffer) deferredEffects.Add(new Secret(owner, card, target));
                 Render(); statusLabel.text = "상대 방어 · 비공개 행동 " + deferredLog.Count + "건 [ 해결 때 공개 ]";
             }
-            else { Note("나 · " + Cards.Names[(int)card]); Render(); if (!Cards.Enhanced(card)) yield return feedback.Applied(card, owner, target, card != Card.Reroute || State.Rungs[target / 2] >= 0); }
+            else { Note("나 · " + Cards.Names[(int)card]); Render(); if (!Cards.Enhanced(card)) yield return feedback.Applied(card, owner, target, card != Card.Reroute || State.Rungs[Battle.Slot(target) / 2] >= 0); }
             // Board effects remain concealed; visible hand counts follow removal then draw.
             if(owner==1)publicHandCount=State.Hands[1].Count;
             yield return DrawFeedback(mineBefore, enemyBefore);
@@ -266,7 +287,7 @@ namespace Breach.UI
         {
             if (State == null || State.Actor != 1 || State.Winner != -1 || State.Phase >= 2) yield break; busy = true; Render(); yield return Wait(.55f);
             int guard = 0, index, target; while (State.ChooseBot(out index, out target) && guard++ < 40) { yield return Play(1, index, target); busy = true; RefreshTargets(); yield return Wait(.2f); }
-            State.EndAction(); CapturePublic(); foreach (string entry in deferredLog) Note(entry); deferredLog.Clear(); yield return TurnFeedback(); foreach (var effect in deferredEffects) yield return feedback.Applied(effect.Card, effect.Owner, effect.Target, effect.Card != Card.Reroute || State.Rungs[effect.Target / 2] >= 0); deferredEffects.Clear(); if (State.Phase == 2) yield return ResolveRound(false); busy = false; undoLogMarks.Clear(); Render(); if (State.Actor == 1 && State.Winner == -1) yield return BotFlow();
+            State.EndAction(); CapturePublic(); foreach (string entry in deferredLog) Note(entry); deferredLog.Clear(); yield return TurnFeedback(); foreach (var effect in deferredEffects) yield return feedback.Applied(effect.Card, effect.Owner, effect.Target, effect.Card != Card.Reroute || State.Rungs[Battle.Slot(effect.Target) / 2] >= 0); deferredEffects.Clear(); if (State.Phase == 2) yield return ResolveRound(false); busy = false; undoLogMarks.Clear(); Render(); if (State.Actor == 1 && State.Winner == -1) yield return BotFlow();
         }
         IEnumerator ResolveRound(bool showTurn = true)
         {
@@ -315,6 +336,8 @@ namespace Breach.UI
         {
             if (sequences) sequences.Cancel();
             if (presentation) presentation.Cancel();
+            if (bridge) { Destroy(bridge.gameObject); bridge = null; }
+            if (hold) hold.HideNow();
             if (fx) Clear(fx); if (paths) Clear(paths);
             var crt = FindFirstObjectByType<CrtOverlay>(); if (crt) crt.SetBurst(0);
         }

@@ -6,7 +6,8 @@ namespace Breach.UI
     public sealed class TitleBBackdrop : MaskableGraphic
     {
         public float TimeValue=4.5f;
-        public const float ContactTime=.72f, ReleaseTime=.805f;
+        public const float ContactTime=.60f, ReleaseTime=.685f;
+        static float Hash(int n){n=(n<<13)^n;return ((n*(n*n*15731+789221)+1376312589)&0x7fffffff)/2147483647f;}
         static Color Hex(uint rgb,float a=1) => new Color(((rgb>>16)&255)/255f,((rgb>>8)&255)/255f,(rgb&255)/255f,a);
         void Poly(VertexHelper vh,Vector2[] p,Color[] colors)
         {
@@ -80,21 +81,29 @@ namespace Breach.UI
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear();var cyan=Hex(0x57dcf4);var red=Hex(0xff526b);
-            // Horizontal gradient clipped by the B diagonal, matching the source SVG.
-            for(int i=0;i<128;i++){
-                float x=i*10,x2=x+10;float yl=Mathf.Clamp((790-x)*2.4f,0,720),yr=Mathf.Clamp((790-x2)*2.4f,0,720);
-                Color l=Color.Lerp(Hex(0x155663),Hex(0x07141d),Mathf.Clamp01(x/790)),r=Color.Lerp(Hex(0x155663),Hex(0x07141d),Mathf.Clamp01(x2/790));
-                Poly(vh,new[]{new Vector2(x,0),new Vector2(x2,0),new Vector2(x2,yr),new Vector2(x,yl)},new[]{l,r,r,l});
-                l=Color.Lerp(Hex(0x190e19),Hex(0x6c1d32),Mathf.Clamp01((x-490)/790));r=Color.Lerp(Hex(0x190e19),Hex(0x6c1d32),Mathf.Clamp01((x2-490)/790));
-                Poly(vh,new[]{new Vector2(x,yl),new Vector2(x2,yr),new Vector2(x2,720),new Vector2(x,720)},new[]{l,r,r,l});
+            // Title B new plan 1 (2026-11-21): black until contact; 0.75-2.05 s 24 bands glitch separately
+            // while each side covers from its own screen edge toward the B diagonal (x + y/2.4 = 790).
+            var black=Color.black;Poly(vh,new[]{Vector2.zero,new Vector2(1280,0),new Vector2(1280,720),new Vector2(0,720)},new[]{black,black,black,black});
+            int tick=Mathf.FloorToInt(TimeValue*24);
+            for(int j=0;j<24;j++){
+                float y0=j*30,y1=y0+30,p=Mathf.SmoothStep(0,1,Mathf.Clamp01((TimeValue-.75f-Hash(j+11)*.25f)/1.05f));if(p<=0)continue;
+                float wild=1-p;if(Hash(tick*7+j)<.12f*wild)continue;float jit=(Hash(tick*31+j)-.5f)*72*wild;
+                float b0=790-y0/2.4f,b1=790-y1/2.4f;
+                float L0=Mathf.Min(b0,b0*p+jit),L1=Mathf.Min(b1,b1*p+jit),R0=Mathf.Max(b0,b0+(1280-b0)*(1-p)+jit),R1=Mathf.Max(b1,b1+(1280-b1)*(1-p)+jit);
+                for(float x=0;x<1280;x+=20){float x2=x+20;
+                    float tr=Mathf.Clamp(L0,x,x2),br=Mathf.Clamp(L1,x,x2);
+                    if(tr>x||br>x){Color l=Color.Lerp(Hex(0x155663),Hex(0x07141d),Mathf.Clamp01(x/790)),r=Color.Lerp(Hex(0x155663),Hex(0x07141d),Mathf.Clamp01(Mathf.Max(tr,br)/790));Poly(vh,new[]{new Vector2(x,y0),new Vector2(tr,y0),new Vector2(br,y1),new Vector2(x,y1)},new[]{l,r,r,l});}
+                    float tl=Mathf.Clamp(R0,x,x2),bl=Mathf.Clamp(R1,x,x2);
+                    if(tl<x2||bl<x2){Color l=Color.Lerp(Hex(0x190e19),Hex(0x6c1d32),Mathf.Clamp01((Mathf.Min(tl,bl)-490)/790)),r=Color.Lerp(Hex(0x190e19),Hex(0x6c1d32),Mathf.Clamp01((x2-490)/790));Poly(vh,new[]{new Vector2(tl,y0),new Vector2(x2,y0),new Vector2(x2,y1),new Vector2(bl,y1)},new[]{l,r,r,l});}
+                }
             }
-            float reveal=Mathf.SmoothStep(0,1,Mathf.Clamp01((TimeValue-.75f)/1.1f));
+            float reveal=Mathf.SmoothStep(0,1,Mathf.Clamp01((TimeValue-2.05f)/.2f));
             Line(vh,new Vector2(782,-10),new Vector2(482,730),3,new Color(cyan.r,cyan.g,cyan.b,reveal));
             Line(vh,new Vector2(800,-10),new Vector2(500,730),3,new Color(red.r,red.g,red.b,reveal));
             for(int side=0;side<2;side++)for(int i=0;i<13;i++){
                 float y=36+i*55;float e=side==0?-80:1360,bend=side==0?250+i%4*60:1030-i%4*60,inner=side==0?620+i%3*45:665-i%3*43;
                 var p=new[]{new Vector2(e,y),new Vector2(bend,y),new Vector2(bend+(side==0?65:-65),y+30),new Vector2(inner,y+30)};
-                float progress=1-Mathf.Pow(1-Mathf.Clamp01((TimeValue-.85f-i*.075f)/1.1f),3);
+                float progress=1-Mathf.Pow(1-Mathf.Clamp01((TimeValue-2.10f-i*.03f)/.84f),3);
                 float total=0;for(int k=1;k<4;k++)total+=Vector2.Distance(p[k-1],p[k]);float remaining=total*progress;
                 Color ink=side==0?cyan:red;ink.a=.24f;
                 for(int k=1;k<4&&remaining>0;k++){

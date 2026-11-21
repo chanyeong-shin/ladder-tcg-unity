@@ -14,7 +14,7 @@ namespace Breach.UI
         {
             var args=Environment.GetCommandLineArgs();int at=Array.IndexOf(args,"--title-fx-check");if(at<0||at+1>=args.Length)yield break;
             dir=args[at+1];Directory.CreateDirectory(dir);Application.runInBackground=true;c=GetComponent<BattleController>();yield return null;
-            float[] moments={.58f,.75f,.84f,1.0f,1.35f,2.3f,3.06f,3.18f,3.36f,3.56f,3.77f,4.5f};
+            float[] moments={.3f,.6f,.66f,.9f,1.4f,2.07f,2.6f,2.95f,3.3f,3.7f,4.1f,4.6f};
             string[] names={"01-approach","02-compress","03-release","04-shockwave","05-decay","06-circuits","07-menu-interference","08-menu-split","09-menu-static","10-menu-locking","11-menu-stable","12-title-ready"};
             for(int i=0;i<moments.Length;i++){
                 yield return Await(()=>c.titleScreen.IntroTime>=moments[i],names[i]);if(failed)yield break;

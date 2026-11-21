@@ -44,14 +44,15 @@ namespace Breach.UI {
    if(Mathf.Abs(((RectTransform)wall.GetChild(0)).anchoredPosition.x)>.1f||!wall.GetChild(2).gameObject.activeSelf){Fail("Firewall did not lock");yield break;}yield return Shot("firewall-locked");yield return Await(()=>wallDone,"wall cleanup");if(failed)yield break;
    bool absorbed=false;c.feedback.speed=1;StartCoroutine(Run(c.feedback.Play(Card.Inject,0,new Vector2(850,860),new Vector2(126,201.6f)),()=>absorbed=true));
    yield return Await(()=>c.feedback.Phase=="absorb"&&c.feedback.Progress>.25f,"absorption");if(failed)yield break;
-   var glows=c.fx.GetComponentsInChildren<Shape>().Where(x=>x.name=="전체 테두리 글로우").ToArray();if(glows.Length!=3||glows.Any(x=>x.color.a>0)){Fail("Whole glow before both branches arrived");yield break;}
-   yield return Shot("absorb-branches");yield return Await(()=>c.feedback.Phase=="absorb"&&c.feedback.Progress>.65f,"whole glow");if(failed)yield break;yield return Shot("absorb-whole");
-   if(!glows.Any(x=>x.color.a>.1f)){Fail("Missing whole glow");yield break;}yield return Await(()=>absorbed,"absorb cleanup");if(failed)yield break;
+   var signal=c.game.GetComponentsInChildren<CircuitGraphic>(true).FirstOrDefault(x=>x.Signals);if(!signal||signal.SignalTime<0){Fail("Activation signals not running");yield break;}
+   yield return Shot("activation-signals");yield return Await(()=>c.feedback.Phase=="absorb"&&c.feedback.Progress>.65f,"activation late");if(failed)yield break;yield return Shot("activation-pads");
+   if(signal.SignalTime<.5f){Fail("Activation signals stalled");yield break;}yield return Await(()=>absorbed,"activation cleanup");if(failed)yield break;
+   if(signal.SignalTime>=0){Fail("Activation signals left running");yield break;}
    bool changed=false,turnDone=false;var crt=FindFirstObjectByType<CrtOverlay>();StartCoroutine(Run(c.feedback.Turn(1,1,0,()=>changed=true),()=>turnDone=true));
-   yield return Await(()=>c.feedback.Phase=="turn"&&c.feedback.Progress>.41f,"VHS peak");if(failed)yield break;yield return Shot("vhs-peak");
+   yield return Await(()=>c.feedback.Phase=="turn"&&c.feedback.Progress>.52f,"VHS peak");if(failed)yield break;yield return Shot("vhs-peak");
    if(!changed||!crt||crt.Burst<.9f){Fail("VHS peak or turn callback missing");yield break;}yield return Await(()=>turnDone,"VHS recovery");if(failed)yield break;yield return null;yield return Shot("vhs-recovered");
    if(crt.Burst!=0){Fail("VHS remained active");yield break;}
-   File.WriteAllText(Path.Combine(dir,"week9-result.txt"),"PASS: 6 fixed attack fixtures (hit, partial cancel, wall, full cancel, pierce, offline), camera focus and restore, fixed HUD and headings, horizontal bloom, firewall open-to-lock, both absorption branches before full glow, VHS peak callback and recovery");Application.Quit(0);
+   File.WriteAllText(Path.Combine(dir,"week9-result.txt"),"PASS: 6 fixed attack fixtures (hit, partial cancel, wall, full cancel, pierce, offline), camera focus and restore, fixed HUD and headings, horizontal bloom, firewall open-to-lock, activation signals along board-bound circuit bundles, VHS peak callback and recovery");Application.Quit(0);
   }
   IEnumerator Run(IEnumerator routine,Action done){yield return routine;done();}
   IEnumerator Await(Func<bool> test,string label){float end=Time.realtimeSinceStartup+20;while(!test()&&Time.realtimeSinceStartup<end)yield return null;if(!test())Fail("Timeout "+label);}

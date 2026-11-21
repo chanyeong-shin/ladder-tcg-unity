@@ -73,12 +73,14 @@ namespace Breach.UI
         {
             menuGroup.interactable=false;menuGroup.blocksRaycasts=false;
             menuGroup.alpha=1;
-            for(elapsed=0;elapsed<4.5f;elapsed+=Time.unscaledDeltaTime*IntroPlaybackSpeed)
+            for(elapsed=0;elapsed<4.6f;elapsed+=Time.unscaledDeltaTime*IntroPlaybackSpeed)
             {
                 backdrop.TimeValue=elapsed;backdrop.SetVerticesDirty();
-                logo.alpha=Mathf.SmoothStep(0,1,Mathf.InverseLerp(2.1f,2.85f,elapsed));
-                for(int i=0;i<signals.Count;i++)signals[i].SetTime(elapsed-3-i*.07f,i);
-                menuNoise.TimeValue=elapsed-3;menuNoise.SetVerticesDirty();
+                logo.alpha=Mathf.SmoothStep(0,1,Mathf.InverseLerp(2.9f,3.6f,elapsed));
+                float glitch=elapsed>=2.9f&&elapsed<3.08f?1:0;int tick=Mathf.FloorToInt(elapsed*24);
+                ((RectTransform)logo.transform).anchoredPosition=glitch>0?new Vector2(((tick*37)%9-4)*3,((tick*11)%5-2)*1.5f):Vector2.zero;if(glitch>0&&tick%3==0)logo.alpha*=.35f;
+                for(int i=0;i<signals.Count;i++)signals[i].SetTime(elapsed-3.7f-i*.07f,i);
+                menuNoise.TimeValue=elapsed-3.7f;menuNoise.SetVerticesDirty();
                 float hit=Mathf.Clamp01((elapsed-TitleBBackdrop.ContactTime)/.38f);
                 art.anchoredPosition=elapsed>=TitleBBackdrop.ContactTime&&hit<1?new Vector2(Mathf.Sin(hit*62)*14,Mathf.Sin(hit*43)*8)*Mathf.Pow(1-hit,2):Vector2.zero;
                 yield return null;
@@ -88,7 +90,7 @@ namespace Breach.UI
         public void FinishIntro()
         {
             if(intro!=null){StopCoroutine(intro);intro=null;}if(!root)return;
-            elapsed=4.5f;backdrop.TimeValue=4.5f;backdrop.SetVerticesDirty();art.anchoredPosition=Vector2.zero;
+            elapsed=4.6f;backdrop.TimeValue=4.6f;backdrop.SetVerticesDirty();art.anchoredPosition=Vector2.zero;((RectTransform)logo.transform).anchoredPosition=Vector2.zero;
             logo.alpha=menuGroup.alpha=1;menuGroup.interactable=menuGroup.blocksRaycasts=true;ready=true;
             for(int i=0;i<signals.Count;i++)signals[i].SetTime(1,i);
             menuNoise.TimeValue=-1;menuNoise.SetVerticesDirty();
