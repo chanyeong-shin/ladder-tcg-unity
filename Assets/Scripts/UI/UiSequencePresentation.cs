@@ -27,7 +27,7 @@ namespace Breach.UI
         CanvasGroup resultGroup;
         TMP_Text summary;
         RectTransform drawRoot;
-        float Delta { get { return Time.unscaledDeltaTime * Mathf.Max(.1f, c.PlaybackSpeed); } }
+        float Delta { get { return Time.unscaledDeltaTime * Mathf.Max(.1f, c.animationSpeed); } }
         static float Ease(float t) { t = Mathf.Clamp01(t); return t * t * (3 - 2 * t); }
         static CanvasGroup Group(GameObject item) { var group = item.GetComponent<CanvasGroup>(); return group ? group : item.AddComponent<CanvasGroup>(); }
 

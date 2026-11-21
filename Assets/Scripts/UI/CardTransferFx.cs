@@ -20,10 +20,7 @@ namespace Breach.UI {
    new[]{new Vector2(448,498),new Vector2(532,498),new Vector2(560,498),new Vector2(560,423),new Vector2(582,423)},
    new[]{new Vector2(448,516),new Vector2(532,516),new Vector2(550,516),new Vector2(550,561),new Vector2(582,561)}
   };
-  BattleController host;
-  // While the controller is skipping, every phase below runs to its end in one frame.
-  float Rate {get{if(!host)host=GetComponent<BattleController>();return host&&host.Skipping?BattleController.SkipSpeed:speed;}}
-  float Delta {get{return Time.deltaTime*Mathf.Max(.1f,Rate);}}
+  float Delta {get{return Time.deltaTime*Mathf.Max(.1f,speed);}}
   static float Ease(float t){return t*t*(3-2*t);}
   RectTransform Root(string name){return Ui.Rect(name,layer,0,0,1920,1080);}
   void At(RectTransform r,Vector2 p){r.anchoredPosition=new Vector2(p.x,-p.y);}
@@ -137,8 +134,8 @@ namespace Breach.UI {
    if(!changed)atPeak?.Invoke();if(crt)crt.SetBurst(0);
    // VHS exchange stays short; readable text holds independently of noisy frames.
    label.color=header.color=color;Phase="turn-hold";
-   for(float t=0;t<1;t+=Time.unscaledDeltaTime*(Rate>=BattleController.SkipSpeed?BattleController.SkipSpeed:1)/1.35f){Progress=t;yield return null;}
-   for(float t=0;t<1;t+=Time.unscaledDeltaTime*(Rate>=BattleController.SkipSpeed?BattleController.SkipSpeed:1)/.3f){label.color=header.color=new Color(color.r,color.g,color.b,1-t);yield return null;}
+   for(float t=0;t<1;t+=Time.unscaledDeltaTime/1.35f){Progress=t;yield return null;}
+   for(float t=0;t<1;t+=Time.unscaledDeltaTime/.3f){label.color=header.color=new Color(color.r,color.g,color.b,1-t);yield return null;}
    Destroy(root.gameObject);Phase="idle";
   }
   public IEnumerator Impact(Vector2 point,string caption,Color color){var root=Root("패킷 충돌");var ring=Ui.Box("충돌 섬광",root,point.x-22,point.y-22,44,44,color,false,3,6);var label=Ui.Text("충돌 결과",root,point.x-95,point.y-50,190,26,caption,font,17,color);label.alignment=TextAlignmentOptions.Center;for(float t=0;t<1;t+=Delta/.3f){ring.color=label.color=new Color(color.r,color.g,color.b,1-t);float size=44+t*24;At(ring.rectTransform,point-Vector2.one*size/2);ring.rectTransform.sizeDelta=Vector2.one*size;yield return null;}Destroy(root.gameObject);}

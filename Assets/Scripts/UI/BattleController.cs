@@ -22,44 +22,33 @@ namespace Breach.UI
         RectTransform hints; Button socketTarget; Coroutine handTween; Vector2 playOrigin, playSize; bool fromDrop;
         public Battle State { get; private set; }
         public bool CanInput { get { return State != null && State.Winner == -1 && State.Actor == 0 && State.Phase < 2 && !busy && game.activeSelf; } }
-        bool busy, dragging, skipping; int selected = -1, hover = -1; CardView dragged; TMP_Text skipHint;
-        readonly List<int> undoLogMarks = new List<int>();
-        // Space or a click fast-forwards every running presentation through its normal code path,
-        // so each effect still reaches its end state. It stops at the next turn caption or input point.
-        public const float SkipSpeed = 1000;
-        public bool Skipping { get { return skipping; } }
-        public float PlaybackSpeed { get { return skipping ? SkipSpeed : animationSpeed; } }
+        bool busy, dragging; int selected = -1, hover = -1, actionLogStart; CardView dragged;
         readonly List<CardView> cards = new List<CardView>(); readonly List<string> log = new List<string>();
         int[,] publicPower = new int[2, 3]; int[] publicRungs = { -1, -1, -1 }; int[] publicOwners = { -1, -1, -1 }; int publicSecrets, publicHandCount; readonly List<string> deferredLog = new List<string>(); readonly List<Secret> deferredEffects = new List<Secret>();
         public static readonly float[] LaneX = { 702, 982, 1262 }; public static readonly float[] RowY = { 364, 497, 630 };
         void Start()
         {
             titleScreen = gameObject.AddComponent<TitleBScreen>(); titleScreen.Initialize(this);
-            presentation = gameObject.AddComponent<CombatPresentation>(); presentation.Initialize(this); sequences = gameObject.AddComponent<UiSequencePresentation>(); sequences.Initialize(this); gameObject.AddComponent<Week9Check>(); gameObject.AddComponent<NovemberCheck>(); gameObject.AddComponent<FixCheck>(); startButton.onClick.AddListener(RequestBegin); retryButton.onClick.AddListener(RequestBegin); endButton.onClick.AddListener(EndTurn); undoButton.onClick.AddListener(Undo); logButton.onClick.AddListener(() => logPanel.SetActive(!logPanel.activeSelf));
+            presentation = gameObject.AddComponent<CombatPresentation>(); presentation.Initialize(this); sequences = gameObject.AddComponent<UiSequencePresentation>(); sequences.Initialize(this); gameObject.AddComponent<Week9Check>(); gameObject.AddComponent<NovemberCheck>(); startButton.onClick.AddListener(RequestBegin); retryButton.onClick.AddListener(RequestBegin); endButton.onClick.AddListener(EndTurn); undoButton.onClick.AddListener(Undo); logButton.onClick.AddListener(() => logPanel.SetActive(!logPanel.activeSelf));
             for (int i = 0; i < laneTargets.Length; i++) { int t = i; laneTargets[i].onClick.AddListener(() => Use(t, false)); }
             for (int i = 0; i < rungTargets.Length; i++) { int t = i; rungTargets[i].onClick.AddListener(() => Use(t, true)); }
             hints = Ui.Rect("배치 가능한 지점", game.transform, 0, 0, 1920, 1080); hints.SetSiblingIndex(paths.GetSiblingIndex() + 1);
             var socketHit = Ui.Rect("소켓 사용 판정", game.transform, 223, 381, 228, 236); var hitImage = socketHit.gameObject.AddComponent<Image>(); hitImage.color = Color.clear; socketTarget = socketHit.gameObject.AddComponent<Button>(); socketTarget.targetGraphic = hitImage; socketTarget.transition = Selectable.Transition.None; socketTarget.onClick.AddListener(() => Use(0, false)); socketHit.gameObject.SetActive(false);
-            skipHint = Ui.Text("연출 건너뛰기 안내", game.transform, 1459, 900, 287, 24, "SPACE · 클릭  연출 건너뛰기", font, 14, new Color(.55f, .7f, .76f)); skipHint.raycastTarget = false; skipHint.gameObject.SetActive(false);
             title.SetActive(true); game.SetActive(false); result.SetActive(false); logPanel.SetActive(false); sequences.ShowTitle();
         }
         void Update()
         {
-            if (title.activeSelf) { skipping = false; titleScreen.HandleKeys(); return; }
-            if (skipping && (State == null || CanInput || result.activeSelf || !game.activeSelf)) skipping = false;
-            if (Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(0)) SkipPresentation();
-            if (skipHint) { bool show = busy && !skipping && game.activeSelf && !result.activeSelf; if (skipHint.gameObject.activeSelf != show) skipHint.gameObject.SetActive(show); }
+            if (title.activeSelf) { titleScreen.HandleKeys(); return; }
             if (Input.GetKeyDown(KeyCode.Return) && result.activeSelf) { RequestBegin(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && result.activeSelf) { ReturnToTitle(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && CanInput) { selected = -1; ClearPreview(); LayoutHand(-1); RefreshTargets(); }
             if (Input.GetKeyDown(KeyCode.Return) && CanInput) EndTurn();
         }
-        public void SkipPresentation() { if (State != null && busy && !dragging && game.activeSelf && !result.activeSelf) skipping = true; }
         void RequestBegin()
         {
             if (beginning || (!title.activeSelf && !result.activeSelf) || (title.activeSelf && titleScreen.ModalOpen)) return;
             StopAllCoroutines(); handTween = null; StopAllEffects();
-            beginning = true; busy = true; dragging = false; fromDrop = false; skipping = false;
+            beginning = true; busy = true; dragging = false; fromDrop = false;
             if (dragged) Destroy(dragged.gameObject); dragged = null;
             if (EventSystem.current) EventSystem.current.SetSelectedGameObject(null);
             StartCoroutine(Begin());
@@ -67,7 +56,7 @@ namespace Breach.UI
         void ReturnToTitle()
         {
             StopAllCoroutines(); handTween = null; StopAllEffects();
-            beginning = false; busy = false; dragging = false; fromDrop = false; skipping = false; selected = -1; hover = -1;
+            beginning = false; busy = false; dragging = false; fromDrop = false; selected = -1; hover = -1;
             if (dragged) Destroy(dragged.gameObject); dragged = null;
             visibleHandLimit = visibleEnemyLimit = int.MaxValue;
             State = null; game.SetActive(false); result.SetActive(false); logPanel.SetActive(false);
@@ -82,7 +71,7 @@ namespace Breach.UI
             selected = -1; logPanel.SetActive(false); CapturePublic();
             visibleHandLimit = visibleEnemyLimit = 0;
             game.SetActive(true);
-            Note("접속 완료 · " + (State.Attacker == 0 ? "내" : "상대") + " 공격 턴"); undoLogMarks.Clear();
+            Note("접속 완료 · " + (State.Attacker == 0 ? "내" : "상대") + " 공격 턴"); actionLogStart = log.Count;
             Render(); yield return DrawFeedback(0, 0); yield return TurnFeedback();
             busy = false; beginning = false; RefreshTargets(); yield return BotFlow();
         }
@@ -197,9 +186,8 @@ namespace Breach.UI
         IEnumerator ReturnCard(CardView view) { busy = true; ClearPreview(); RefreshTargets(); if (view) view.transform.SetParent(hand, false); LayoutHand(-1); yield return new WaitForSecondsRealtime(.18f); busy = false; fromDrop = false; Render(); statusLabel.text = "배치 취소 · 손패로 돌아왔습니다."; }
         public void RefreshTargets()
         {
-            bool input = CanInput; endButton.interactable = input; undoButton.interactable = input && State.CanUndo; if (hints) Clear(hints); bool selectedCard = input && selected >= 0 && selected < State.Hands[0].Count; Card card = selectedCard ? State.Hands[0][selected] : Card.Inject;
-            // A rung card targets rung slots only; channel targets would otherwise catch hover/drop over the vertical lines.
-            for (int i = 0; i < laneTargets.Length; i++) { laneTargets[i].gameObject.SetActive(!(selectedCard && card == Card.Reroute)); laneTargets[i].interactable = selectedCard && card != Card.Reroute && State.CanPlay(0, selected, i); laneTargets[i].transition = Selectable.Transition.None; laneTargets[i].targetGraphic.color = Color.clear; }
+            bool input = CanInput; endButton.interactable = input; undoButton.interactable = input; if (hints) Clear(hints); bool selectedCard = input && selected >= 0 && selected < State.Hands[0].Count; Card card = selectedCard ? State.Hands[0][selected] : Card.Inject;
+            for (int i = 0; i < laneTargets.Length; i++) { laneTargets[i].interactable = selectedCard && card != Card.Reroute && State.CanPlay(0, selected, i); laneTargets[i].transition = Selectable.Transition.None; laneTargets[i].targetGraphic.color = Color.clear; }
             for (int i = 0; i < rungTargets.Length; i++) { bool active = selectedCard && card == Card.Reroute; rungTargets[i].gameObject.SetActive(active); rungTargets[i].interactable = active && State.CanPlay(0, selected, i); rungTargets[i].transition = Selectable.Transition.None; rungTargets[i].targetGraphic.color = Color.clear; }
             if (socketTarget) socketTarget.gameObject.SetActive(selectedCard && (card == Card.Buffer || card == Card.Overflow)); if (!selectedCard || !hints) return;
             if (card == Card.Reroute) { for (int t = 0; t < 6; t++) if (State.CanPlay(0, selected, t)) Ui.Line("합법 회선 자리", hints, new Vector2(LaneX[t % 2] + 12, RowY[t / 2]), new Vector2(LaneX[t % 2 + 1] - 12, RowY[t / 2]), new Color(1, .8f, .2f, .55f), 2); }
@@ -208,8 +196,7 @@ namespace Breach.UI
         }
         public void Preview(int target, bool rung)
         {
-            if (State == null || busy) return; ClearPreview(); if (selected >= 0 && selected < State.Hands[0].Count) { Card card = State.Hands[0][selected]; if ((card == Card.Reroute) != rung) return; if (card == Card.Buffer || card == Card.Overflow) return; if (!State.CanPlay(0, selected, target)) return; if (card == Card.Firewall) { Ui.Line("차단 채널 미리보기", paths, new Vector2(LaneX[target], 231), new Vector2(LaneX[target], 763), Ui.Gold, 3); return; } }
-            else if (rung) return;
+            if (State == null || busy) return; ClearPreview(); if (selected >= 0 && selected < State.Hands[0].Count) { Card card = State.Hands[0][selected]; if (card == Card.Buffer || card == Card.Overflow) return; if (!State.CanPlay(0, selected, target)) return; if (card == Card.Firewall) { Ui.Line("차단 채널 미리보기", paths, new Vector2(LaneX[target], 231), new Vector2(LaneX[target], 763), Ui.Gold, 3); return; } }
             if (rung) { if (selected >= 0 && State.CanPlay(0, selected, target)) Ui.Line("배치 미리보기", paths, new Vector2(LaneX[target % 2], RowY[target / 2]), new Vector2(LaneX[target % 2 + 1], RowY[target / 2]), Ui.Gold, 5); return; }
             var p = State.Route(0, target); var points = Points(p); for (int i = 1; i < points.Count; i++) Ui.Line("공개 경로", paths, points[i - 1], points[i], new Color(1, .8f, .2f, .65f), 3);
             if (CanInput) statusLabel.text = "CH " + (target + 1) + " → 상대 CH " + (p.End + 1) + " · 공개된 경로 기준";
@@ -222,10 +209,7 @@ namespace Breach.UI
             Card card = State.Hands[owner][index];
             int mineBefore = State.Hands[0].Count - (owner == 0 ? 1 : 0);
             int enemyBefore = State.Hands[1].Count - (owner == 1 ? 1 : 0);
-            int logMark = log.Count;
             if (!State.Play(owner, index, target)) yield break;
-            if (owner == 0) { if (State.UndoSteps == 0) undoLogMarks.Clear(); else undoLogMarks.Add(logMark); }
-            bool enemyAttack = owner == 1 && State.Phase == 0;
             busy = true; HoldDraws(mineBefore, enemyBefore); BuildHand(mineBefore); RefreshTargets();
             Vector2 enemyOrigin = new Vector2(300,188), enemySize = new Vector2(56.875f,91);
             if (owner == 1) {
@@ -237,36 +221,20 @@ namespace Breach.UI
             }
             feedback.speed = animationSpeed;
             yield return feedback.Play(card, owner, owner == 0 ? playOrigin : enemyOrigin, owner == 0 ? playSize : enemySize);
-            string enemyEntry = "상대 · " + (Cards.Enhanced(card) ? "보안 카드 배치" : Cards.Names[(int)card]);
-            if (enemyAttack)
-            {
-                // Attack-turn actions become public at end of action anyway (spec 7-2), so each one is shown
-                // as it is taken. Security cards show only that one was set (spec 6.3).
-                Note(enemyEntry); CapturePublic(); Render();
-                bool onBoard = !Cards.Enhanced(card) && card != Card.Buffer;
-                statusLabel.text = Cards.Enhanced(card) ? "상대 · 보안 카드 배치 [ ENCRYPTED ]" : card == Card.Inject ? "상대 · 코드 주입 → CH " + (target + 1) : card == Card.Reroute ? "상대 · 라우팅 변경 · " + (target / 2 + 1) + "단" : "상대 · 버퍼 적재";
-                if (onBoard) yield return feedback.Applied(card, owner, target, card != Card.Reroute || State.Rungs[target / 2] >= 0);
-            }
-            else if (owner == 1)
-            {
-                // Defense-turn actions stay secret until resolve (spec 7-3): only the card back movement is shown.
-                deferredLog.Add(enemyEntry); if (!Cards.Enhanced(card) && card != Card.Buffer) deferredEffects.Add(new Secret(owner, card, target));
-                Render(); statusLabel.text = "상대 방어 · 비공개 행동 " + deferredLog.Count + "건 [ 해결 때 공개 ]";
-            }
-            else { Note("나 · " + Cards.Names[(int)card]); Render(); if (!Cards.Enhanced(card)) yield return feedback.Applied(card, owner, target, card != Card.Reroute || State.Rungs[target / 2] >= 0); }
+            if (owner == 1) deferredLog.Add("상대 · " + (Cards.Enhanced(card) ? "보안 카드 배치" : Cards.Names[(int)card])); else Note("나 · " + Cards.Names[(int)card]);
+            Render(); if (!Cards.Enhanced(card)) { if (owner == 1) deferredEffects.Add(new Secret(owner, card, target)); else yield return feedback.Applied(card, owner, target, card != Card.Reroute || State.Rungs[target / 2] >= 0); }
             // Board effects remain concealed; visible hand counts follow removal then draw.
             if(owner==1)publicHandCount=State.Hands[1].Count;
             yield return DrawFeedback(mineBefore, enemyBefore);
-            if (owner == 1) { string shown = statusLabel.text; Render(); statusLabel.text = shown; yield return Wait(.45f); }
             busy = false; Render();
         }
         public void EndTurn() { if (CanInput && !dragging) { selected = -1; ClearPreview(); StartCoroutine(Advance()); } }
-        IEnumerator Advance() { busy = true; State.EndAction(); CapturePublic(); if (State.Phase == 2) yield return ResolveRound(); else yield return TurnFeedback(); busy = false; undoLogMarks.Clear(); Render(); yield return BotFlow(); }
+        IEnumerator Advance() { busy = true; State.EndAction(); CapturePublic(); if (State.Phase == 2) yield return ResolveRound(); else yield return TurnFeedback(); busy = false; actionLogStart = log.Count; Render(); yield return BotFlow(); }
         IEnumerator BotFlow()
         {
             if (State == null || State.Actor != 1 || State.Winner != -1 || State.Phase >= 2) yield break; busy = true; Render(); yield return Wait(.55f);
             int guard = 0, index, target; while (State.ChooseBot(out index, out target) && guard++ < 40) { yield return Play(1, index, target); busy = true; RefreshTargets(); yield return Wait(.2f); }
-            State.EndAction(); CapturePublic(); foreach (string entry in deferredLog) Note(entry); deferredLog.Clear(); yield return TurnFeedback(); foreach (var effect in deferredEffects) yield return feedback.Applied(effect.Card, effect.Owner, effect.Target, effect.Card != Card.Reroute || State.Rungs[effect.Target / 2] >= 0); deferredEffects.Clear(); if (State.Phase == 2) yield return ResolveRound(false); busy = false; undoLogMarks.Clear(); Render(); if (State.Actor == 1 && State.Winner == -1) yield return BotFlow();
+            State.EndAction(); CapturePublic(); foreach (string entry in deferredLog) Note(entry); deferredLog.Clear(); yield return TurnFeedback(); foreach (var effect in deferredEffects) yield return feedback.Applied(effect.Card, effect.Owner, effect.Target, effect.Card != Card.Reroute || State.Rungs[effect.Target / 2] >= 0); deferredEffects.Clear(); if (State.Phase == 2) yield return ResolveRound(false); busy = false; actionLogStart = log.Count; Render(); if (State.Actor == 1 && State.Winner == -1) yield return BotFlow();
         }
         IEnumerator ResolveRound(bool showTurn = true)
         {
@@ -283,7 +251,7 @@ namespace Breach.UI
                     var shot = report.Packets.FirstOrDefault(p => p.Owner == s.Owner && p.Start == s.Target);
                     if (shot != null) servers.First(v => v.owner == s.Owner && v.channel == s.Target).Render(report.Before[s.Owner, s.Target], shot.Initial);
                 }
-                if (s.Card != Card.Overflow) yield return feedback.Applied(s.Card, s.Owner, s.Target, true);
+                yield return feedback.Applied(s.Card, s.Owner, s.Target, true);
             }
             RefreshBoard(); yield return DrawFeedback(mineBefore, enemyBefore);
             yield return Flight(report);
@@ -299,18 +267,10 @@ namespace Breach.UI
             Note("ROUND " + State.Round + " · " + (State.Attacker == 0 ? "내" : "상대") + " 공격 턴");
             yield return TurnFeedback(); yield return DrawFeedback(mineBefore, enemyBefore);
         }
-        // A skip lasts until the next turn caption: each turn's actions stay readable unless skipped again.
-        IEnumerator TurnFeedback() { skipping = false; bool previous = busy; busy = true; RefreshTargets(); feedback.speed = animationSpeed; if(State.Phase==2){Render();yield return presentation.BeginResolution();} yield return feedback.Turn(State.Phase, State.Actor, State.Attacker, Render); busy = previous; RefreshTargets(); }
-        // One press reverts only the most recent action. Drawn cards are never undone (Battle locks them).
-        void Undo()
-        {
-            if (!CanInput || !State.Undo()) return;
-            if (undoLogMarks.Count > 0) { int mark = Mathf.Clamp(undoLogMarks[undoLogMarks.Count - 1], 0, log.Count); undoLogMarks.RemoveAt(undoLogMarks.Count - 1); log.RemoveRange(mark, log.Count - mark); }
-            selected = -1; ClearPreview(); CapturePublic(); Render(); logText.text = string.Join("\n", log.Skip(Math.Max(0, log.Count - 16)));
-            statusLabel.text = "마지막 행동 1개를 되돌렸습니다." + (State.CanUndo ? " 더 되돌릴 수 있습니다." : "");
-        }
-        void Note(string message) { log.Add(message); if (log.Count > 200) { log.RemoveAt(0); for (int i = 0; i < undoLogMarks.Count; i++) undoLogMarks[i] = Mathf.Max(0, undoLogMarks[i] - 1); } logText.text = string.Join("\n", log.Skip(Math.Max(0, log.Count - 16))); }
-        IEnumerator Wait(float seconds) { for (float t = 0; t < seconds; t += Time.deltaTime * Mathf.Max(.1f, PlaybackSpeed)) yield return null; }
+        IEnumerator TurnFeedback() { bool previous = busy; busy = true; RefreshTargets(); feedback.speed = animationSpeed; if(State.Phase==2){Render();yield return presentation.BeginResolution();} yield return feedback.Turn(State.Phase, State.Actor, State.Attacker, Render); busy = previous; RefreshTargets(); }
+        void Undo() { if (!CanInput) return; State.Undo(); if (log.Count > actionLogStart) log.RemoveRange(actionLogStart, log.Count - actionLogStart); selected = -1; ClearPreview(); CapturePublic(); Render(); Note("이번 행동을 시작 상태로 복원했습니다."); }
+        void Note(string message) { log.Add(message); if (log.Count > 200) { log.RemoveAt(0); actionLogStart = Mathf.Max(0, actionLogStart - 1); } logText.text = string.Join("\n", log.Skip(Math.Max(0, log.Count - 16))); }
+        WaitForSeconds Wait(float seconds) { return new WaitForSeconds(seconds / Mathf.Max(.1f, animationSpeed)); }
         void StopAllEffects()
         {
             if (sequences) sequences.Cancel();
