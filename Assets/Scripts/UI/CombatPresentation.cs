@@ -177,6 +177,7 @@ namespace Breach.UI
             public Shape ring;
             public Shape[] sparks;
             public TMP_Text caption;
+            public Shape[] vortex;
             public bool started, released;
         }
         static float Fraction(List<Vector2> path, Vector2 point) { float total = 0, done = 0; for (int j = 1; j < path.Count; j++) total += Vector2.Distance(path[j - 1], path[j]); for (int j = 1; j < path.Count; j++) { float len = Vector2.Distance(path[j - 1], path[j]); if (Mathf.Abs(Vector2.Distance(path[j - 1], point) + Vector2.Distance(point, path[j]) - len) < .1f) return (done + Vector2.Distance(path[j - 1], point)) / Mathf.Max(1, total); done += len; } return 1; }
@@ -241,8 +242,9 @@ namespace Breach.UI
                 clash.sparks = new Shape[8];
                 for (int i = 0; i < clash.sparks.Length; i++)
                     clash.sparks[i] = Ui.Line("힘겨루기 스파크", clash.root, Vector2.zero, Vector2.right, i % 2 == 0 ? Ui.Cyan : Ui.Red, 1.8f);
-                clash.caption = Ui.Text("힘겨루기 상태", clash.root, -125, -65, 250, 28, "팽팽한 힘겨루기", c.font, 17, new Color(.9f, .97f, 1));
-                clash.caption.alignment = TextAlignmentOptions.Center;
+                // vortex (user 11-22 "힘겨룰때 소용돌이 효과 점점 돌아가며 작아지게"): 3 spiral arms, 12 segments each
+                clash.vortex = new Shape[3 * 12];
+                for (int i = 0; i < clash.vortex.Length; i++) { int arm = i / 12; clash.vortex[i] = Ui.Line("힘겨루기 소용돌이", clash.root, Vector2.zero, Vector2.right, arm == 0 ? Ui.Cyan : arm == 1 ? Ui.Red : Ui.Gold, 2); }
                 clash.root.gameObject.SetActive(false);
                 a.clash = b.clash = clash;
                 clashes.Add(clash);
@@ -266,7 +268,17 @@ namespace Breach.UI
                 At(clash.glow.rectTransform, -clash.glow.rectTransform.sizeDelta * (1 + yielding * .25f) * .5f);
                 var ringSize = new Vector2(54 + yielding * 12, 40 + yielding * 8);
                 clash.ring.rectTransform.sizeDelta = ringSize; At(clash.ring.rectTransform, -ringSize * .5f);
-                clash.caption.text = clash.lead.packet.Power > 0 && yielding > 0 ? "조금씩 밀리는 중" : "팽팽한 힘겨루기";
+                // the vortex turns faster and tighter as the struggle goes on, then closes into the contact
+                float vortexRadius = Mathf.Lerp(66, 6, 1 - Mathf.Pow(1 - u, 2)), turn = u * u * 14 + u * 3;
+                for (int i = 0; i < clash.vortex.Length; i++)
+                {
+                    int arm = i / 12, k = i % 12; float a0 = turn + arm * Mathf.PI * 2 / 3 + k * .32f, a1 = a0 + .32f;
+                    float r0 = vortexRadius * (1 - k / 13f), r1 = vortexRadius * (1 - (k + 1) / 13f);
+                    Vector2 p0 = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * r0, p1 = new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * r1, dv = p1 - p0; var seg = clash.vortex[i];
+                    At(seg.rectTransform, p0); seg.rectTransform.localRotation = Quaternion.Euler(0, 0, -Mathf.Atan2(dv.y, dv.x) * Mathf.Rad2Deg);
+                    seg.rectTransform.sizeDelta = new Vector2(Mathf.Max(.5f, dv.magnitude), Mathf.Lerp(2.6f, .8f, k / 11f));
+                    var ink = seg.color; ink.a = (1 - k / 13f) * (.95f - .5f * u); seg.color = ink;
+                }
                 for (int i = 0; i < clash.sparks.Length; i++)
                 {
                     float a = i * Mathf.PI / 4 + u * .35f, radius = 21 + Mathf.Sin(u * 24 + i) * 3;
@@ -291,7 +303,7 @@ namespace Breach.UI
                 bool winner = clash.lead.packet.Power > 0;
                 Color ink = winner ? (clash.lead.packet.Owner == 0 ? Ui.Cyan : Ui.Red) : Ui.Gold;
                 impulse = Mathf.Max(impulse, winner ? 5 : 3);
-                StartCoroutine(Impact(parent, clash.releasePoint, winner ? "돌파 · 잔여 " + clash.lead.packet.Power : "동시 상쇄", ink));
+                StartCoroutine(Impact(parent, clash.releasePoint, "", ink)); // no words after a tug-of-war either
             }
         }
         float ShotProgress(Shot shot, float elapsed)
