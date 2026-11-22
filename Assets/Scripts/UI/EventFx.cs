@@ -26,7 +26,8 @@ namespace Breach.UI {
   public static IEnumerator Run(Transform parent, Plan plan, Func<float> delta, float duration = 3) {
    var root = Ui.Rect("이벤트 빛", parent, 0, 0, 1920, 1080); var bands = new List<Band>(); var rings = new List<(Shape s, Vector2 c, float r0, float r1, float delay)>(); var caps = new List<(SoftDisc disc, Band last)>(); var flashes = new List<Shape[]>();
    foreach (var h0 in plan.Halos) {
-    var h = (pts: Extend(h0.pts, 40), h0.col, h0.delay);
+    // user 11-22: the glow sits under the servers, so the path ends at the server center and the server hides the end
+    var h = (pts: h0.pts, h0.col, h0.delay);
     float acc = 0; int first = bands.Count;
     for (int i = 1; i < h.pts.Count; i++) {
      float len = Vector2.Distance(h.pts[i - 1], h.pts[i]); if (len < .5f) continue;
