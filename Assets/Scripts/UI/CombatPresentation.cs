@@ -61,6 +61,9 @@ namespace Breach.UI
                 }
             }
             Track(c.rungs); Track(c.paths); foreach (var server in c.servers) Track((RectTransform)server.transform);
+            // user 11-22: path glow from loads, rungs and the resolve sits under the servers, not over them
+            var serverParent = c.servers[0].transform.parent; int below = c.servers.Where(v => v.transform.parent == serverParent).Min(v => v.transform.GetSiblingIndex());
+            underServers = Ui.Rect("이벤트 빛 - 서버 아래", serverParent, 0, 0, 1920, 1080); underServers.SetSiblingIndex(below); Track(underServers);
             layer = Ui.Rect("공격 연출 - 카메라 연동", c.game.transform, 0, 0, 1920, 1080); layer.SetAsLastSibling(); Track(layer);
             foreach(var item in new GameObject[]{c.hand.gameObject,c.endButton.gameObject,c.undoButton.gameObject,c.logButton.gameObject,c.roundLabel.gameObject,c.statusLabel.gameObject,c.secretLabel.gameObject})Dim(item);
         }
@@ -91,6 +94,8 @@ namespace Breach.UI
         void Track(RectTransform r) { visuals.Add(r); origins.Add(r.anchoredPosition); }
         public void ResetView() { for (int i = 0; i < visuals.Count; i++) if (visuals[i]) { visuals[i].anchoredPosition = origins[i]; visuals[i].localScale = Vector3.one; } CameraZoom = 1; CameraOffset = Vector2.zero; SetPeripheral(0); ResolutionFocused=false; }
         public RectTransform BoardEffect(string name) => Ui.Rect(name,layer,0,0,1920,1080);
+        RectTransform underServers;
+        public RectTransform BoardEffectUnderServers(string name) => Ui.Rect(name, underServers ? underServers : layer, 0, 0, 1920, 1080);
         // Rung segments of a packet path (two consecutive cells on one row): where along the path it starts, and its ends
         // inset 16 px from the lanes like the HTML (8 x 2).
         static List<(float at, int index, Vector2 a, Vector2 b)> RungCrossings(Shot s)
@@ -319,6 +324,7 @@ namespace Breach.UI
             playbackVersion++;
             StopAllCoroutines();
             if (layer) foreach (Transform child in layer) Destroy(child.gameObject);
+            if (underServers) foreach (Transform child in underServers) Destroy(child.gameObject);
             ResetView(); Phase = "idle"; ClashPhase = "idle"; Progress = 0;
         }
         public IEnumerator Play(Resolution report)
@@ -344,8 +350,8 @@ namespace Breach.UI
             foreach (var b in beams) Destroy(b.gameObject); foreach (var g in glows) Destroy(g.gameObject);
             foreach (var s in shots) { StartCoroutine(Flash(root, s.path[0], s.packet.Owner == 0 ? Ui.Cyan : Ui.Red)); c.servers.First(v => v.owner == s.packet.Owner && v.channel == s.packet.Start).Render(report.Before[s.packet.Owner, s.packet.Start], 0); }
             // HTML tab 2: every launched path glows in its side's color; tab 6: a packet crossing a rung flashes it.
-            var lights = new EventFx.Plan(); foreach (var s in shots) lights.Halos.Add((s.path, EventFx.Side(s.packet.Owner), 0));
-            var lightRoot = BoardEffect("이벤트 빛 - 발동"); StartCoroutine(EventFx.Run(lightRoot, lights, () => Delta));
+            var lights = new EventFx.Plan(); foreach (var s in shots) if (s.clash == null) lights.Halos.Add((s.path, EventFx.Side(s.packet.Owner), 0)); // a tug-of-war keeps its own effect visible
+            var lightRoot = BoardEffectUnderServers("이벤트 빛 - 발동"); StartCoroutine(EventFx.Run(lightRoot, lights, () => Delta));
             var crossings = shots.Select(s => RungCrossings(s)).ToList(); var crossed = new HashSet<(int, int)>();
             Phase = "flight"; float impulse = 0;
             float duration = FlightSeconds + (clashes.Count > 0 ? StruggleSeconds : 0);

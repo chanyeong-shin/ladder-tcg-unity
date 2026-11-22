@@ -154,7 +154,7 @@ namespace Breach.UI {
     if(card==Card.Inject||card==Card.ZeroDay){
      // load: ring at the channel start (10 -> 34), the packet's path from 0.15 s, its arrival server ring from 0.6 s
      var pts=BattleController.Points(st.Route(owner,target));Vector2 startPoint=new Vector2(BattleController.LaneX[target],owner==0?777-26*EventFx.S:201+26*EventFx.S);
-     plan.Rings.Add((startPoint,EventFx.Side(owner),10*EventFx.S,34*EventFx.S,0));plan.Halos.Add((pts,EventFx.Side(owner),.15f));plan.Rings.Add((pts[pts.Count-1],EventFx.Side(owner),28,52,.6f));
+     plan.Rings.Add((startPoint,EventFx.Side(owner),10*EventFx.S,34*EventFx.S,0));plan.Rings.Add((pts[pts.Count-1],EventFx.Side(owner),28,52,.6f));
     }else if(card==Card.Reroute){
      // link / unlink: the rung flashes (white / #ff8b9b), its two contacts ring (14 -> 46), and only the paths whose
      // arrival changed because of it glow in their side's color, each with its arrival server ring from 0.55 s.
@@ -166,10 +166,10 @@ namespace Breach.UI {
      st.Rungs[row]=keepRung;st.RungRiders[row]=keepRider;
      Vector2 x1=new Vector2(BattleController.LaneX[edge],BattleController.RowY[row]),x2=new Vector2(BattleController.LaneX[edge+1],BattleController.RowY[row]);
      plan.Flashes.Add((x1,x2,connected?Color.white:new Color(1,.545f,.608f)));plan.Rings.Add((x1,EventFx.Core,14*EventFx.S,46*EventFx.S,0));plan.Rings.Add((x2,EventFx.Core,14*EventFx.S,46*EventFx.S,0));
-     int n=0;for(int i=0;i<after.Count;i++)if(after[i].End!=before[i].End){var pts=BattleController.Points(after[i]);plan.Halos.Add((pts,EventFx.Side(after[i].Owner),.12f+n*.06f));plan.Rings.Add((pts[pts.Count-1],EventFx.Side(after[i].Owner),28,52,.55f));n++;}
+     int n=0;for(int i=0;i<after.Count;i++)if(after[i].End!=before[i].End){var pts=BattleController.Points(after[i]);plan.Rings.Add((pts[pts.Count-1],EventFx.Side(after[i].Owner),28,52,.55f));n++;}
      mark.color=Color.clear;mark.gameObject.SetActive(false);
     }
-    if(!plan.Empty)controller.presentation.StartCoroutine(EventFx.Run(controller.presentation.BoardEffect("이벤트 빛"),plan,()=>Delta));
+    if(!plan.Empty)controller.presentation.StartCoroutine(EventFx.Run(controller.presentation.BoardEffectUnderServers("이벤트 빛"),plan,()=>Delta));
    }
    var label=Ui.Text("적용 결과",root,point.x-110,point.y-(wall?85:63),220,30,message,font,19,color);label.alignment=TextAlignmentOptions.Center;
    Phase="applied";for(float t=0;t<1;t+=Delta/.5f){Progress=t;float a=1-t*t;if(wall){float close=Ease(Mathf.InverseLerp(.22f,.52f,t));foreach(var gate in gates)CombatPresentation.CloseFirewall(gate,close);if(t<.52f)a=0;}mark.color=new Color(color.r,color.g,color.b,a);label.color=new Color(color.r,color.g,color.b,a);yield return null;}
