@@ -33,7 +33,10 @@ namespace Breach.UI
         // so each effect still reaches its end state. It stops at the next turn caption or input point.
         public const float SkipSpeed = 1000;
         public bool Skipping { get { return skipping; } }
-        public float PlaybackSpeed { get { return skipping ? SkipSpeed : animationSpeed; } }
+        // user 11-22: no instant skip on click; holding the mouse button (or Space) plays effects faster while held
+        public const float HoldSpeed = 4; bool holding;
+        public float HoldFactor { get { return holding ? HoldSpeed : 1; } }
+        public float PlaybackSpeed { get { return skipping ? SkipSpeed : animationSpeed * HoldFactor; } }
         readonly List<CardView> cards = new List<CardView>(); readonly List<string> log = new List<string>();
         int[,] publicPower = new int[2, 3]; int[] publicRungs = { -1, -1, -1 }; int[] publicOwners = { -1, -1, -1 }; int[] publicRiders = { -1, -1, -1 }; int publicSecrets, publicHandCount; readonly List<string> deferredLog = new List<string>(); readonly List<Secret> deferredEffects = new List<Secret>();
         public static readonly float[] LaneX = { 702, 982, 1262 }; public static readonly float[] RowY = { 364, 497, 630 };
@@ -45,15 +48,15 @@ namespace Breach.UI
             for (int i = 0; i < rungTargets.Length; i++) { int t = i; rungTargets[i].onClick.AddListener(() => Use(t, true)); }
             hints = Ui.Rect("배치 가능한 지점", game.transform, 0, 0, 1920, 1080); hints.SetSiblingIndex(paths.GetSiblingIndex() + 1);
             var socketHit = Ui.Rect("소켓 사용 판정", game.transform, 223, 381, 228, 236); var hitImage = socketHit.gameObject.AddComponent<Image>(); hitImage.color = Color.clear; socketTarget = socketHit.gameObject.AddComponent<Button>(); socketTarget.targetGraphic = hitImage; socketTarget.transition = Selectable.Transition.None; socketTarget.onClick.AddListener(() => Use(0, false)); socketHit.gameObject.SetActive(false);
-            skipHint = Ui.Text("연출 건너뛰기 안내", game.transform, 1459, 900, 287, 24, "SPACE · 클릭  연출 건너뛰기", font, 14, new Color(.55f, .7f, .76f)); skipHint.raycastTarget = false; skipHint.gameObject.SetActive(false);
+            skipHint = Ui.Text("연출 건너뛰기 안내", game.transform, 1459, 900, 287, 24, "마우스 · SPACE 누르고 있기  빠르게 보기", font, 14, new Color(.55f, .7f, .76f)); skipHint.raycastTarget = false; skipHint.gameObject.SetActive(false);
             title.SetActive(true); game.SetActive(false); result.SetActive(false); logPanel.SetActive(false); sequences.ShowTitle();
         }
         void Update()
         {
             if (title.activeSelf) { skipping = false; titleScreen.HandleKeys(); return; }
             if (skipping && (State == null || CanInput || result.activeSelf || !game.activeSelf)) skipping = false;
-            if (Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(0)) SkipPresentation();
-            if (skipHint) { bool show = busy && !skipping && game.activeSelf && !result.activeSelf; if (skipHint.gameObject.activeSelf != show) skipHint.gameObject.SetActive(show); }
+            holding = (Input.GetMouseButton(0) || Input.GetKey(KeyCode.Space)) && State != null && busy && !dragging && game.activeSelf && !result.activeSelf;
+            if (skipHint) { bool show = busy && !skipping && game.activeSelf && !result.activeSelf; if (skipHint.gameObject.activeSelf != show) skipHint.gameObject.SetActive(show); if (show) skipHint.text = holding ? ">> 빠르게 보는 중  x" + HoldSpeed : "마우스 · SPACE 누르고 있기  빠르게 보기"; }
             if (Input.GetKeyDown(KeyCode.Return) && result.activeSelf) { RequestBegin(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && result.activeSelf) { ReturnToTitle(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && bridge) CancelBridge();
