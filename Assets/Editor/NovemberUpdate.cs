@@ -58,10 +58,12 @@ namespace Breach.EditorTools
             EditorUtility.SetDirty(font);AssetDatabase.SaveAssets();
             Debug.Log("DoHyeon atlas: "+font.characterTable.Count+" characters, "+font.atlasTextures.Length+" atlas page(s), missing: "+missing);
             bool Keep(TMP_Text t)=>c.titleFont&&t.font==c.titleFont;
-            foreach(var t in UnityEngine.Object.FindObjectsByType<TMP_Text>(FindObjectsInactive.Include,FindObjectsSortMode.None))if(!Keep(t)){t.font=font;EditorUtility.SetDirty(t);}
+            // Middle-aligned labels (OFFLINE, buttons) center on the glyphs themselves, not on the borrowed Noto line metrics
+            void Center(TMP_Text t){if(t.verticalAlignment==VerticalAlignmentOptions.Middle)t.verticalAlignment=VerticalAlignmentOptions.Geometry;}
+            foreach(var t in UnityEngine.Object.FindObjectsByType<TMP_Text>(FindObjectsInactive.Include,FindObjectsSortMode.None))if(!Keep(t)){t.font=font;Center(t);EditorUtility.SetDirty(t);}
             foreach(string guid in AssetDatabase.FindAssets("t:Prefab",new[]{"Assets/Prefabs"})){
                 string prefabPath=AssetDatabase.GUIDToAssetPath(guid);var root=PrefabUtility.LoadPrefabContents(prefabPath);bool changed=false;
-                foreach(var t in root.GetComponentsInChildren<TMP_Text>(true))if(t.font!=font){t.font=font;changed=true;}
+                foreach(var t in root.GetComponentsInChildren<TMP_Text>(true)){if(t.font!=font){t.font=font;changed=true;}if(t.verticalAlignment==VerticalAlignmentOptions.Middle){Center(t);changed=true;}}
                 if(changed)PrefabUtility.SaveAsPrefabAsset(root,prefabPath);PrefabUtility.UnloadPrefabContents(root);
             }
             c.font=font;if(c.feedback){c.feedback.font=font;EditorUtility.SetDirty(c.feedback);}EditorUtility.SetDirty(c);

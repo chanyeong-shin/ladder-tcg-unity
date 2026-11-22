@@ -166,7 +166,8 @@ namespace Breach.UI {
      st.Rungs[row]=keepRung;st.RungRiders[row]=keepRider;
      Vector2 x1=new Vector2(BattleController.LaneX[edge],BattleController.RowY[row]),x2=new Vector2(BattleController.LaneX[edge+1],BattleController.RowY[row]);
      plan.Flashes.Add((x1,x2,connected?Color.white:new Color(1,.545f,.608f)));plan.Rings.Add((x1,EventFx.Core,14*EventFx.S,46*EventFx.S,0));plan.Rings.Add((x2,EventFx.Core,14*EventFx.S,46*EventFx.S,0));
-     int n=0;for(int i=0;i<after.Count;i++)if(after[i].End!=before[i].End){var pts=BattleController.Points(after[i]);plan.Halos.Add((pts,EventFx.Side(after[i].Owner),.12f+n*.06f));plan.Rings.Add((pts[pts.Count-1],EventFx.Side(after[i].Owner),28,52,.55f));n++;}
+     int n=0;for(int i=0;i<after.Count;i++)if(after[i].End!=before[i].End&&st.Health[after[i].Owner,after[i].Start]>0){ // an offline server cannot fire: no glow for its lane (user 11-22)
+     var pts=BattleController.Points(after[i]);plan.Halos.Add((pts,EventFx.Side(after[i].Owner),.12f+n*.06f));plan.Rings.Add((pts[pts.Count-1],EventFx.Side(after[i].Owner),28,52,.55f));n++;}
      mark.color=Color.clear;mark.gameObject.SetActive(false);
     }
     if(!plan.Empty)controller.presentation.StartCoroutine(EventFx.Run(controller.presentation.BoardEffectUnderServers("이벤트 빛"),plan,()=>Delta));
