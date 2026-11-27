@@ -109,11 +109,19 @@ namespace Breach.UI {
    if (c.HoldingCard || zoom.IsOpen) { Fail("One click selected or zoomed the card (should do nothing)"); yield break; }
    click.clickCount = 2; views[1].OnPointerClick(click); yield return null;
    if (!zoom.IsOpen || zoom.Shown != Card.ZeroDay || zoom.Index != 1 || c.HoldingCard) { Fail("Double-click did not zoom ZERO-DAY"); yield break; }
+   CardZoom.ForcePointer = new Vector2(1700, 1000); // 마우스를 용어 밖에 둔다
    foreach (float tz in new[] { .3f, 2f, 4f }) {
     yield return Await(() => zoom.OpenTime >= tz, "zoom " + tz); if (failed) yield break;
     FxClock.Scale = 0; yield return null; moments.Add("zoom-card3 tz=" + zoom.OpenTime.ToString("0.000") + " open=" + zoom.Amount.ToString("0.000"));
     yield return Shot("w12-zoom-card3-" + tz.ToString("0.0")); FxClock.Scale = 1;
+    if (zoom.Hovered != -1) { Fail("Zoom glossary lit with no pointer on it (tz " + tz + ")"); yield break; }
    }
+   // 2026-11-27: 용어 풀이 상자에 마우스를 올려야만 노랗게 켜진다
+   CardZoom.ForcePointer = new Vector2(1530, 260); yield return new WaitForSecondsRealtime(.4f);
+   if (zoom.Hovered != 0) { Fail("Zoom glossary 0 did not light under the pointer"); yield break; }
+   FxClock.Scale = 0; yield return null; yield return Shot("w12-zoom-card3-hover"); FxClock.Scale = 1;
+   CardZoom.ForcePointer = null;
+   passed.Add("zoom glossary lights only under the pointer");
    var right = new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Right, position = Center(views[0]) };
    zoom.Click(right); yield return null;
    if (!zoom.IsOpen || zoom.Shown != Card.Inject || zoom.Index != 0) { Fail("Right-click on another hand card did not switch the zoom"); yield break; }

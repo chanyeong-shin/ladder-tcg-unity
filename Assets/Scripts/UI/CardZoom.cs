@@ -15,7 +15,20 @@ namespace Breach.UI {
   BattleController c; RectTransform root, layer; Image dim, catcher; TMP_Text hint, idleText; Shape idleBar; CanvasGroup idleGroup;
   // current card
   RectTransform content; Image flyer; FxPainter flyGlow, lines; CanvasGroup panel; readonly List<Tip> tips = new List<Tip>(); readonly List<Span> spans = new List<Span>();
-  sealed class Tip { public CanvasGroup group; public Shape border; public FxPainter glow; public Rect box; }
+  sealed class Tip { public CanvasGroup group; public Shape border; public FxPainter glow; public Rect box; public float hl; }
+  // 검사용: 값이 있으면 마우스 대신 이 무대 좌표(1920x1080, 위가 0)를 쓴다
+  public static Vector2? ForcePointer;
+  public int Hovered { get { for (int k = 0; k < tips.Count; k++) if (tips[k].hl > .5f) return k; return -1; } }
+  Vector2 Pointer() { if (ForcePointer.HasValue) return ForcePointer.Value; Vector2 q; RectTransformUtility.ScreenPointToLocalPointInRectangle(c.stage, Input.mousePosition, null, out q); return new Vector2(q.x, -q.y); }
+  // 마우스 아래 용어: 오른쪽 풀이 상자 또는 효과 글의 밑줄 친 용어 (위아래 여유 포함)
+  int HoverTip() {
+   var p = Pointer();
+   for (int k = 0; k < tips.Count; k++) {
+    if (tips[k].box.Contains(p)) return k;
+    var s = spans[k]; if (s.width > 0 && new Rect(s.left - 4, s.baseline - 34, s.width + 8, 48).Contains(p)) return k;
+   }
+   return -1;
+  }
   sealed class Span { public float left, width, baseline; }
   enum Mode { Closed, Open, Closing }
   Mode mode; float now, ts, from, o; int idx = -1; Card card;
@@ -75,16 +88,20 @@ namespace Breach.UI {
    Place(flyer.rectTransform, r);
    flyGlow.Begin(); flyGlow.SoftRect(r.x, r.y, r.width, r.height, 30, C(56, 217, 255, .125f)); flyGlow.End();
    panel.alpha = OutQ((open - .3f) / .7f);
-   int n = tips.Count, act = open > .99f && tz > 1.6f ? Mathf.FloorToInt((tz - 1.6f) / 1.4f) % n : -1;
+   // 2026-11-27 사용자 "카드 설명 볼때 화면 조작이 없는데도 노란색으로 빛나는데 마우스 가져다 대야지 빛나게 하자":
+   //  1.4초마다 돌아가며 켜지던 용어 강조를 지우고, 마우스가 올라간 용어 풀이 상자나 밑줄 친 용어만 켠다 (0.15초에 걸쳐 켜지고 꺼짐)
+   int n = tips.Count, act = open > .99f ? HoverTip() : -1;
+   float step = Time.unscaledDeltaTime * FxClock.Scale / .15f;
    lines.Begin();
    for (int k = 0; k < n; k++) {
     var tip = tips[k]; float on = Clamp((tz - .6f - k * .25f) / .3f) * open; tip.group.alpha = on;
-    tip.border.color = k == act ? Gold : Line;
-    tip.glow.Begin(); if (k == act) tip.glow.SoftRect(tip.box.x, tip.box.y, tip.box.width, tip.box.height, 24, C(255, 196, 56, .175f)); tip.glow.End();
+    tip.hl = Clamp(tip.hl + (k == act ? step : -step)); float h = Smooth(tip.hl);
+    tip.border.color = Color.Lerp(Line, Gold, h);
+    tip.glow.Begin(); if (h > 0) tip.glow.SoftRect(tip.box.x, tip.box.y, tip.box.width, tip.box.height, 24, C(255, 196, 56, .175f * h)); tip.glow.End();
     var sp = spans[k]; if (on <= 0) continue;
     // HTML: x = 640 + 30 + offsetLeft (mb starts at 671), y = 200 + 70 + offsetTop + offsetHeight (mb at 271) -> 1 px left/up of the real box
     float y = sp.baseline + 7 + 3 - 1 + 3, x0 = sp.left - 1;
-    var col = C(255, 196, 56, on * (k == act ? 1 : .45f));
+    var col = C(255, 196, 56, on * Mathf.Lerp(.45f, 1, h));
     lines.Poly(new[] { new Vector2(x0, y), new Vector2(1215, y), new Vector2(1245, 240 + k * 225), new Vector2(1270, 240 + k * 225) }, 2, col);
    }
    lines.End();
