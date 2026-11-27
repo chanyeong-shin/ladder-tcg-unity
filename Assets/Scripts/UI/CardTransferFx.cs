@@ -16,17 +16,20 @@ namespace Breach.UI {
   public float Progress {get;private set;}
   // week 12 (계획/Unity_12주차_적용목록.md items 1, 4, 5)
   public SocketFx socket;
-  // item 1: action-turn counter and this turn's activation effect (ActivateFx.Choose: never the previous turn's pick)
+  // item 1: action-turn counter and this turn's random pick (ActivateFx.Choose: never the previous turn's pick).
+  // Week 13 (11_fxpick.js): the effect is chosen in the bottom-right picker (EffectPicker, saved); "무작위" uses TurnPick.
   public int ActionTurn {get;private set;}=-1;
-  public int EffectPick {get;private set;}=ActivateFx.Packets;
+  public int TurnPick {get;private set;}=ActivateFx.Lockon;
+  int forced=-1;
+  public int EffectPick {get{return forced>=0?forced:EffectPicker.Resolve(TurnPick);}}
   // item 5: socket-to-board route of the last dot card (0 top, 1 middle, 2 bottom) and how many cards were placed this battle
   public int LastRoute {get;private set;}=-1;
   int plays; public int Plays {get{return plays;}}
   // cards between their scan and their end keep the hold circuit on (two may overlap since item 5)
   int holders;
   public float EffectRate {get{return Mathf.Max(.1f,Rate);}}
-  public void ResetTurns(){ActionTurn=-1;EffectPick=ActivateFx.Packets;plays=0;holders=0;LastRoute=-1;if(socket)socket.ResetAll();}
-  public void ForcePick(int pick){EffectPick=pick;} // checks only
+  public void ResetTurns(){ActionTurn=-1;TurnPick=ActivateFx.Lockon;forced=-1;plays=0;holders=0;LastRoute=-1;fires.Clear();if(socket)socket.ResetAll();}
+  public void ForcePick(int pick){forced=pick;} // checks only: overrides the picker until the next action turn
   public static readonly Rect Socket=new Rect(223,381,228,236);
   public static Rect DockRect {get {float h=Socket.height-16,w=h/1.6f;return new Rect(Socket.center.x-w/2,Socket.y+8,w,h);}}
   static readonly Vector2[][] Routes={
@@ -140,12 +143,14 @@ namespace Breach.UI {
    Phase="absorb";var fade=root.GetComponentsInChildren<Shape>(true).ToArray();var start=fade.Select(f=>f.color.a).ToArray();
    System.Action<float> step=p=>{Progress=p;for(int i=0;i<fade.Length;i++)if(fade[i]){var c=fade[i].color;c.a=start[i]*(1-p);fade[i].color=c;}};
    if(dot){
-    // 11_queue.js drawBoard 'act' (1.25 s): the dot enters the board at the chosen route's end, runs 40 px in, across, then to the target;
-    // head = ease3(k / .8); the board edge glows rgba(cy, .25 sin(pi k)) at width 6. It sits under the servers like the HTML.
+    // 11_queue.js drawBoard 'act': the dot enters the board at the chosen route's end, runs 40 px in, across, then to the target;
+    // the board edge glows rgba(cy, .25 sin(pi k)) at width 6. It sits under the servers like the HTML.
+    // 13주차 10_nowait.js 'touch' (닿자마자 장전, 확정): act 1.25 -> .45 s, head = ease3(k) so the dot arrives exactly at the end (no .25 s idle);
+    // the result (Applied) starts the moment Play returns.
     var controller=GetComponent<BattleController>();var boardLayer=controller&&controller.presentation?controller.presentation.BoardEffectUnderServers("카드 점 - 판 안"):Root("카드 점 - 판 안");
     var paint=FxPainter.Create("카드 점 - 대상까지",boardLayer);Vector2 from=Routes[route][4],tg=DotTarget(card,owner,target);
     var path=new List<Vector2>{from,from+new Vector2(40,0),new Vector2(tg.x,from.y),tg};
-    for(float t=0;t<1;t+=Delta/CircuitGraphic.SignalLength){step(t);paint.Begin();Dot(paint,path,Ease3(t/.8f),1,ink);paint.StrokeRect(582,129,800,716,6,new Color(ink.r,ink.g,ink.b,.25f*Mathf.Sin(Mathf.PI*t)));paint.End();yield return null;}
+    for(float t=0;t<1;t+=Delta/ActLength){step(t);paint.Begin();Dot(paint,path,Ease3(t),1,ink);paint.StrokeRect(582,129,800,716,6,new Color(ink.r,ink.g,ink.b,.25f*Mathf.Sin(Mathf.PI*t)));paint.End();yield return null;}
     Destroy(boardLayer.gameObject);
    }
    else if(hold)yield return hold.Activate(()=>Delta,step);else for(float t=0;t<CircuitGraphic.SignalLength;t+=Delta){step(t/CircuitGraphic.SignalLength);yield return null;}
@@ -154,6 +159,8 @@ namespace Breach.UI {
    Destroy(root.gameObject);
    Phase="idle";Progress=0;
   }
+  // 10_nowait.js touch: Dn({ act: .45 })
+  public const float ActLength=.45f;
   static float Ease3(float v){v=Mathf.Clamp01(v);return 1-(1-v)*(1-v)*(1-v);}
   static readonly Color DotCore=new Color(233/255f,251/255f,1);
   // 11_queue.js comet() + dot(): 10 tail pieces of .035 path each (head core, then rgba(158,242,255,.8 f^2), width 1.2 + 2f),
@@ -192,7 +199,7 @@ namespace Breach.UI {
    var root=onBoard&&controller&&controller.presentation?controller.presentation.BoardEffect("카드 적용 결과"):Root("카드 적용 결과");Color color=owner==0?Ui.Cyan:Ui.Red;Vector2 point;string message;Shape mark;RectTransform wall=null;var gates=new List<RectTransform>();
    FxPainter glitchHex=null;RectTransform glitchLayer=null;
    // item 5 (11_queue.js hexGlitch): the load mark is a server-shaped hexagon that jitters for .28 s and flashes, instead of the 76 px square
-   if(card==Card.Inject||card==Card.ZeroDay){point=new Vector2(BattleController.LaneX[target],owner==0?777:201);message=card==Card.ZeroDay?"관통 패킷 장전":"+1 장전";mark=Ui.Box("대상 서버 점등 (자리)",root,point.x-38,point.y-38,76,76,Color.clear,false,4,6);mark.enabled=false;
+   if(card==Card.Inject||card==Card.ZeroDay){point=new Vector2(BattleController.LaneX[target],owner==0?777:201);message=card==Card.ZeroDay?"통과 1발 장전":"+1 장전";mark=Ui.Box("대상 서버 점등 (자리)",root,point.x-38,point.y-38,76,76,Color.clear,false,4,6);mark.enabled=false;
     glitchLayer=controller&&controller.presentation?controller.presentation.BoardEffectUnderServers("장전 육각형"):Root("장전 육각형");glitchHex=FxPainter.Create("장전 육각형 지직",glitchLayer);}
    else if(card==Card.Reroute){int slot=Battle.Slot(target);point=new Vector2((BattleController.LaneX[slot%2]+BattleController.LaneX[slot%2+1])/2,BattleController.RowY[slot/2]);var rider=controller&&controller.State!=null?controller.State.RungRiders[slot/2]:-1;message=connected?"회선 연결 · "+BattleController.RiderName(rider):"회선 제거";color=connected?BattleController.RiderColor(rider):new Color(.5f,.6f,.66f);mark=Ui.Line("회선 적용",root,new Vector2(point.x-140,point.y),new Vector2(point.x+140,point.y),color,7);}
    else if(card==Card.Firewall){point=CombatPresentation.FirewallPoint(owner,target);message="양방향 경로 차단";color=Ui.Gold;
@@ -204,15 +211,11 @@ namespace Breach.UI {
     var st=controller.State;var plan=new EventFx.Plan();
     if(card==Card.Inject||card==Card.ZeroDay){
      var packet=st.Route(owner,target);var pts=BattleController.Points(packet);
-     if(EffectPick==ActivateFx.Now){
-     // load: ring at the channel start (10 -> 34), the packet's path from 0.15 s, its arrival server ring from 0.6 s
-     Vector2 startPoint=new Vector2(BattleController.LaneX[target],owner==0?777-26*EventFx.S:201+26*EventFx.S);
-     plan.Rings.Add((startPoint,EventFx.Side(owner),10*EventFx.S,34*EventFx.S,0));plan.Halos.Add((pts,EventFx.Side(owner),.15f));plan.Rings.Add((pts[pts.Count-1],EventFx.Side(owner),28,52,.6f));
-     }else{
-      // item 1: this action turn's effect (01_activate.js random); the glitch needs a still of the board at the activation moment
-      Texture2D shot=EffectPick==ActivateFx.Glitch&&Rate<BattleController.SkipSpeed?Grab():null;
-      var p=controller.presentation;controller.presentation.StartCoroutine(Owned(ActivateFx.Run(EffectPick,p.BoardEffectUnderServers("카드 발동 이펙트"),p.BoardEffect("카드 발동 - 판 밖 어둡게"),pts,owner,packet.End,shot,font,()=>Delta),shot));
-     }
+     // load (05_drop.js atk): the chosen effect along the packet's route, my server -> arrival server. 지금 빛 띠 = ring at 26S from the start
+     // (10S -> 34S), the path from .15 s, the arrival ring from .6 s (NowPlan, the same numbers as before)
+     var scene=ActivateFx.LoadScene(pts,owner,target,packet.End,card==Card.ZeroDay);
+     if(EffectPick==ActivateFx.Now){var now=ActivateFx.NowPlan(scene);plan.Halos.AddRange(now.Halos);plan.Rings.AddRange(now.Rings);}
+     else StartEffect(scene,0);
     }else if(card==Card.Reroute){
      // link / unlink: the rung flashes (white / #ff8b9b), its two contacts ring (14 -> 46), and only the paths whose
      // arrival changed because of it glow in their side's color, each with its arrival server ring from 0.55 s.
@@ -227,6 +230,13 @@ namespace Breach.UI {
      int n=0;for(int i=0;i<after.Count;i++)if(after[i].End!=before[i].End&&st.Health[after[i].Owner,after[i].Start]>0){ // an offline server cannot fire: no glow for its lane (user 11-22)
      var pts=BattleController.Points(after[i]);plan.Halos.Add((pts,EventFx.Side(after[i].Owner),.12f+n*.06f));plan.Rings.Add((pts[pts.Count-1],EventFx.Side(after[i].Owner),28,52,.55f));n++;}
      mark.color=Color.clear;mark.gameObject.SetActive(false);
+     // 13주차 11_fxpick.js / 05_drop.js (사용자 "사다리 없에거나 생기는 건 이펙트를 안바꿨네"): the chosen effect along the rung segment
+     // (left node -> right node of that row) with LINK / CUT ROW n and the reroute terminal. The flash and changed-route glow above stay.
+     var scene=ActivateFx.RungScene(slot,!connected,owner);
+     if(EffectPick==ActivateFx.Now){var now=ActivateFx.NowPlan(scene);plan.Halos.AddRange(now.Halos);plan.Rings.AddRange(now.Rings);}
+     else StartEffect(scene,0);
+     // rungDraw 'cut': the removed rung stays .45 s, then breaks into 8 pieces (in the removed rung's rider color)
+     if(!connected)controller.presentation.StartCoroutine(ActivateFx.RungCut(controller.presentation.BoardEffectUnderServers("가로선 제거"),x1,x2,BattleController.RiderColor(st.LastRemovedRider),()=>Delta));
     }
     if(!plan.Empty)controller.presentation.StartCoroutine(EventFx.Run(controller.presentation.BoardEffectUnderServers("이벤트 빛"),plan,()=>Delta));
    }
@@ -237,6 +247,49 @@ namespace Breach.UI {
    Destroy(root.gameObject);if(glitchLayer)Destroy(glitchLayer.gameObject);Phase="idle";
   }
   static IEnumerator Owned(IEnumerator routine,Texture2D shot){yield return routine;if(shot)Destroy(shot);}
+  // Start the picked effect (not 지금 빛 띠, which callers add to their EventFx plan) on the presentation; the glitch needs a still of the board.
+  void StartEffect(ActivateFx.Scene scene,float delay){
+   var controller=GetComponent<BattleController>();if(!controller||!controller.presentation)return;var p=controller.presentation;int pick=EffectPick;if(pick==ActivateFx.Now)return;
+   Texture2D shot=pick==ActivateFx.Glitch&&Rate<BattleController.SkipSpeed?Grab():null;
+   p.StartCoroutine(Owned(ActivateFx.Run(pick,p.BoardEffectUnderServers("카드 발동 이펙트"),p.BoardEffect("카드 발동 - 판 밖 어둡게"),scene,shot,font,()=>Delta,delay),shot));
+  }
+  // 13주차 11_fxpick.js 'fire' (fireBeam: 효과가 길을 먼저 그린 뒤 빔): CombatPresentation.OnFireRoute is invoked once per firing packet at the
+  // charge start. The packets of one volley are gathered for a frame and get one effect each along their route; the volley shares one
+  // board still (glitch), the board-wide parts (glitch board copies, stream rain) and one terminal per side. The mockup's effect starts .3 s
+  // after the charge and the beam leaves .35 s after the effect start, so u = 0 at max(0, charge - .35). Enemy shots use the red side color.
+  // The resolve already darkens the screen (CombatPresentation FxDim), so the fire effect adds no outside-the-board dark.
+  readonly List<(List<Vector2> pts,int owner)> fires=new List<(List<Vector2>,int)>();float fireCharge;bool fireQueued;
+  void OnEnable(){CombatPresentation.OnFireRoute+=OnFire;}
+  void OnDisable(){CombatPresentation.OnFireRoute-=OnFire;fires.Clear();fireQueued=false;}
+  void OnFire(List<Vector2> pts,int owner,float charge){
+   if(!isActiveAndEnabled||pts==null||pts.Count<2)return;fires.Add((new List<Vector2>(pts),owner));fireCharge=charge;
+   if(!fireQueued){fireQueued=true;StartCoroutine(FireVolley());}
+  }
+  IEnumerator FireVolley(){
+   yield return null;fireQueued=false;var volley=fires.ToList();fires.Clear();
+   var controller=GetComponent<BattleController>();if(!controller||!controller.presentation||volley.Count==0)yield break;var p=controller.presentation;
+   int pick=EffectPick;float delay=Mathf.Max(0,fireCharge-.35f);
+   System.Func<float> delta=()=>controller.Paused?0:Time.unscaledDeltaTime*Mathf.Max(.1f,controller.PlaybackSpeed)*FxClock.Scale; // CombatPresentation.Delta
+   if(pick==ActivateFx.Now){var plan=new EventFx.Plan();foreach(var f in volley){var now=ActivateFx.NowPlan(ActivateFx.FireScene(f.pts,f.owner));plan.Halos.AddRange(now.Halos);plan.Rings.AddRange(now.Rings);}
+    p.StartCoroutine(Delayed(()=>EventFx.Run(p.BoardEffectUnderServers("이벤트 빛 - 발사 효과"),plan,delta),delay,delta));yield break;}
+   Texture2D shot=pick==ActivateFx.Glitch&&controller.PlaybackSpeed<BattleController.SkipSpeed?Grab():null;int running=0;bool lead=true;float termY=400;
+   foreach(int side in volley.Select(f=>f.owner).Distinct().ToList()){
+    var mine=volley.Where(f=>f.owner==side).ToList();bool first=true;
+    foreach(var f in mine){
+     var scene=ActivateFx.FireScene(f.pts,f.owner);scene.Dim=false;scene.Board=lead;lead=false;
+     // 11-27 Unity 확인: 발사 중 터미널 창 두 개가 확대된 힘겨루기 화면을 크게 가려 발사에서는 띄우지 않음(장전·가로선에서는 그대로)
+     if(false&&first){int s0=Lane(f.pts[0].x),e0=Lane(f.pts[f.pts.Count-1].x);
+      scene.Term=new[]{"> fire --ch "+string.Join(",",mine.Select(m=>Lane(m.pts[0].x)+1).OrderBy(v=>v)),"  route  CH"+(s0+1)+" → "+(side==0?"ENEMY":"MY")+" CH"+(e0+1),mine.Count==1?"  packet  sent":"  packets  "+mine.Count+"  sent","  [ OK ]"};
+      scene.TermAt=new Vector2(1040,termY);termY+=170;first=false;}
+     else scene.Term=null;
+     running++;p.StartCoroutine(Then(ActivateFx.Run(pick,p.BoardEffectUnderServers("발사 효과"),p.BoardEffect("발사 효과 - 글자"),scene,shot,font,delta,delay),()=>{running--;if(running==0&&shot)Destroy(shot);}));
+    }
+   }
+   if(running==0&&shot)Destroy(shot);
+  }
+  static int Lane(float x){int best=0;for(int i=1;i<3;i++)if(Mathf.Abs(x-BattleController.LaneX[i])<Mathf.Abs(x-BattleController.LaneX[best]))best=i;return best;}
+  static IEnumerator Then(IEnumerator routine,System.Action done){yield return routine;done();}
+  static IEnumerator Delayed(System.Func<IEnumerator> make,float delay,System.Func<float> delta){for(float t=0;t<delay;t+=delta())yield return null;yield return make();}
   // Render the canvas once through the main camera into an opaque texture. Reading the back buffer
   // (ScreenCapture) returned black or alpha-0 frames in the player, so the copy is drawn directly.
   Texture2D Grab(){
@@ -256,7 +309,7 @@ namespace Breach.UI {
   //  whole stage shakes on x only by (rnd(tick,9)-0.5)*10k; tick = floor(u*30). At p = 0.5 the next screen, already
   //  carrying the center band, replaces the copies. After the change the band holds 1.2 s and fades in 0.4 s.
   public IEnumerator Turn(int phase,int actor,int attacker,System.Action atPeak=null){
-   if(phase<2){ActionTurn++;EffectPick=ActivateFx.Choose(ActionTurn,EffectPick);}
+   if(phase<2){ActionTurn++;TurnPick=ActivateFx.Choose(ActionTurn,TurnPick);forced=-1;}
    var root=Root("턴 전환");root.SetAsLastSibling();Color color=phase==2?new Color(1,.82f,.4f):actor==0?new Color(.22f,.851f,1):new Color(1,.294f,.4f);
    string title=phase==2?"RESOLVE":phase==0?"ATTACK":"DEFEND";
    string detail=(phase==2?"동시 발동":phase==0?"공격 턴":"방어 턴")+" · "+(phase==2?"양쪽":actor==0?"나":"상대");

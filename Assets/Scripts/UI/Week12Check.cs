@@ -22,7 +22,8 @@ namespace Breach.UI {
    // item 1: the per-turn pick follows the HTML choose() sequence and never repeats the previous turn
    int prev = ActivateFx.Packets; var seq = new List<int>(); for (int turn = 0; turn < 12; turn++) { int k = ActivateFx.Choose(turn, prev); if (turn > 0 && k == prev) { Fail("Effect repeated the previous turn"); yield break; } seq.Add(k); prev = k; }
    moments.Add("pick-sequence " + string.Join(",", seq));
-   if (c.feedback.ActionTurn < 0 || c.feedback.ActionTurn >= seq.Count || c.feedback.EffectPick != seq[c.feedback.ActionTurn]) { Fail("Pick for action turn " + c.feedback.ActionTurn + " is " + c.feedback.EffectPick); yield break; }
+   // week 13: the played effect is the picker's choice; the per-turn random pick (used by "무작위") is TurnPick
+   if (c.feedback.ActionTurn < 0 || c.feedback.ActionTurn >= seq.Count || c.feedback.TurnPick != seq[c.feedback.ActionTurn]) { Fail("Pick for action turn " + c.feedback.ActionTurn + " is " + c.feedback.TurnPick); yield break; }
    passed.Add("turn pick sequence " + string.Join(",", seq) + " (no repeats)");
 
    // items 2, 3: holding a card in the blue turn (red circuit pulse + board band), then in the red turn
@@ -82,7 +83,8 @@ namespace Breach.UI {
    passed.Add("second card placed " + released.ToString("0.00") + " s after the first (first in " + firstPhase + "), both settled and cleaned up");
 
    // item 1: each effect at fixed moments (straight CH2 route, like the HTML)
-   foreach (int pick in new[] { ActivateFx.Packets, ActivateFx.Glitch, ActivateFx.Hexes, ActivateFx.Stream }) {
+   // week 13: the selectable effects drawn by ActivateFx.Run (지금 빛 띠 is EventFx; 패킷 버스트 left the list)
+   foreach (int pick in new[] { ActivateFx.Glitch, ActivateFx.Hexes, ActivateFx.Stream, ActivateFx.Lockon }) {
     Fixture(0, 0); c.State.Hands[0].Add(Card.Inject); c.State.SaveAction(); c.Render(); yield return null;
     c.feedback.ForcePick(pick); c.Select(0); c.Use(1, false);
     foreach (float u in new[] { .2f, .5f, .9f, 1.6f }) {
@@ -134,12 +136,12 @@ namespace Breach.UI {
    if (c.HoldingCard || c.State.Hands[0].Count != 3) { Fail("Zoom changed the hand"); yield break; }
    passed.Add("one click = nothing; double-click and right-click zoom; right-click on another card switches; right-click / outside click close (Esc: key input, not simulated)");
 
-   // item 8: drag over the board .6x / 40%, off the board back to full
+   // item 8: drag over the board .6x / 75% (week 13 05_drop.js; was 40%), off the board back to full
    var held = views[0]; var drag = new PointerEventData(EventSystem.current) { position = Center(held) };
    held.OnBeginDrag(drag); drag.position = Screen(982, 550); held.OnDrag(drag); yield return new WaitForSecondsRealtime(.4f);
    var group = held.GetComponent<CanvasGroup>();
    moments.Add("drag over alpha=" + group.alpha.ToString("0.000") + " scale=" + held.transform.localScale.x.ToString("0.000"));
-   if (Mathf.Abs(group.alpha - .4f) > .01f || Mathf.Abs(held.transform.localScale.x - .6f) > .01f) { Fail("Drag over the board is not .6x / 40%"); yield break; }
+   if (Mathf.Abs(group.alpha - .75f) > .01f || Mathf.Abs(held.transform.localScale.x - .6f) > .01f) { Fail("Drag over the board is not .6x / 75%"); yield break; }
    yield return Shot("w12-drag-over");
    drag.position = Screen(1500, 550); held.OnDrag(drag); yield return new WaitForSecondsRealtime(.4f);
    if (group.alpha < .999f || Mathf.Abs(held.transform.localScale.x - 1.6f) > .01f) { Fail("Drag off the board did not restore"); yield break; }
@@ -248,8 +250,8 @@ namespace Breach.UI {
    var b = ReplayLog.Script(c.Replay, out var lastReport);
    if (c.Replay.Mismatch.Count > 0) { Fail("Replay rebuild differs from Battle.Resolve: " + string.Join("; ", c.Replay.Mismatch)); yield break; }
    string[] html = { "접속 완료 · 내 공격 턴", "나 · 코드 주입", "나 · 코드 주입", "나 · 라우팅 변경", "나 · 버퍼 적재", "상대 · 코드 주입", "상대 · 방화벽 (발동 때 적용)", "상대 · 방화벽 공개", "공격 상쇄 · 1", "상대 서버 2 · 피해 1",
-    "ROUND 2 · 상대 공격 턴", "상대 · 코드 주입", "상대 · 라우팅 변경", "상대 · 제로데이 (발동 때 적용)", "나 · 방화벽", "나 · 코드 주입", "상대 · 제로데이 공개", "나 · 방화벽 공개", "방화벽 · 패킷 소멸", "제로데이 · 내 패킷 관통", "내 서버 1 · 피해 1",
-    "ROUND 3 · 내 공격 턴", "나 · 버퍼 오버플로", "나 · 코드 주입", "나 · 라우팅 변경", "나 · 제로데이", "나 · 코드 주입", "상대 · 코드 주입", "나 · 버퍼 오버플로 공개", "나 · 제로데이 공개", "제로데이 · 상대 패킷 관통", "상대 서버 1 · 피해 1", "상대 서버 3 · 피해 2" };
+    "ROUND 2 · 상대 공격 턴", "상대 · 코드 주입", "상대 · 라우팅 변경", "상대 · 제로데이 (발동 때 적용)", "나 · 방화벽", "나 · 코드 주입", "상대 · 제로데이 공개", "나 · 방화벽 공개", "방화벽 · 패킷 소멸", "제로데이 · 통과", "상대 서버 1 · 피해 1", "내 서버 1 · 피해 1", // 11-27 새 제로데이 규칙(1발만 통과)
+    "ROUND 3 · 내 공격 턴", "나 · 버퍼 오버플로", "나 · 코드 주입", "나 · 라우팅 변경", "나 · 제로데이", "나 · 코드 주입", "상대 · 코드 주입", "나 · 버퍼 오버플로 공개", "나 · 제로데이 공개", "공격 상쇄 · 1", "상대 서버 3 · 피해 1" };
    var got = c.Replay.Steps.Select(x => x.T).ToArray();
    if (!got.SequenceEqual(html)) { Fail("Replay lines differ from the mockup LOG: " + string.Join(" | ", got)); yield break; }
    yield return c.ShowScriptedResult(b, lastReport);

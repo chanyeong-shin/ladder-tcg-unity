@@ -9,7 +9,10 @@ class Program {
  var b=Empty();b.Hands[0].Add(Card.Inject);b.SaveAction();Check(b.Play(0,0,1),"inject accepted");Check(b.Power[0,1]==1&&b.Hands[0].Count==0,"use consumes card");b.Undo();Check(b.Power[0,1]==0&&b.Hands[0][0]==Card.Inject,"undo restores state");
  b=Empty();b.Hands[0].Add(Card.Reroute);Check(b.Play(0,0,0),"build rung");b.Hands[0].Add(Card.Reroute);Check(!b.Play(0,0,1),"adjacent same row forbidden");Check(b.Play(0,0,0)&&b.Rungs[0]==-1,"remove existing rung");
  b=Empty();b.Power[0,0]=2;b.Power[1,0]=1;var report=b.Resolve();Check(b.Health[1,0]==0&&b.Health[0,0]==1,"cancellation then hit");Check(b.Power[0,0]==0,"clear ammunition");
- b=Empty();b.Hands[0].Add(Card.ZeroDay);Check(b.Play(0,0,0)&&b.Power[0,0]==0&&b.Hidden.Count==1,"enhanced card deferred");b.Power[1,0]=4;b.Resolve();Check(b.Health[1,0]==0&&b.Health[0,0]==1,"zero day pierces stronger packet");
+ b=Empty();b.Hands[0].Add(Card.ZeroDay);Check(b.Play(0,0,0)&&b.Power[0,0]==0&&b.Hidden.Count==1,"enhanced card deferred");b.Power[1,0]=4;b.Resolve();Check(b.Health[1,0]==0&&b.Health[0,0]==0,"zero day passes; stronger packet also lands (rule 11-27)");
+ b=Empty();for(int i=0;i<3;i++)b.Health[0,i]=b.Health[1,i]=3;b.Power[0,1]=1;b.Hidden.Add(new Secret(0,Card.ZeroDay,1));b.Power[1,1]=3;b.Resolve();Check(b.Health[0,1]==1&&b.Health[1,1]==2,"only the zero-day shot passes: normal 1 vs 3 cancels, enemy 2 lands, zero 1 lands");
+ b=Empty();for(int i=0;i<3;i++)b.Health[0,i]=b.Health[1,i]=3;b.Hidden.Add(new Secret(0,Card.ZeroDay,1));b.Hidden.Add(new Secret(1,Card.Firewall,1));b.Resolve();Check(b.Health[1,1]==3,"firewall blocks the zero-day shot");
+ b=Empty();for(int i=0;i<3;i++)b.Health[0,i]=b.Health[1,i]=3;b.Hidden.Add(new Secret(0,Card.ZeroDay,0));b.Hidden.Add(new Secret(1,Card.ZeroDay,0));b.Resolve();Check(b.Health[0,0]==2&&b.Health[1,0]==2,"two zero-day shots pass each other");
  b=Empty();b.Hands[0].Add(Card.Firewall);b.Play(0,0,0);b.Power[0,0]=3;b.Power[1,0]=3;b.Resolve();Check(b.Health[0,0]==1&&b.Health[1,0]==1,"firewall blocks both sides");
  b=Empty();b.Power[0,1]=3;b.Resolve();Check(b.Health[1,0]==0&&b.Health[1,1]==0&&b.Health[1,2]==0&&b.Winner==0,"overflow splash and victory");
  b=Empty();Array.Clear(b.Health,0,b.Health.Length);b.Resolve();Check(b.Winner==-2,"both sides destroyed is draw");

@@ -10,14 +10,14 @@ namespace Breach.UI {
  // Battle.Route and the Resolve collision order (like the HTML RES), and every event/hit sentence is compared with Battle.Resolve's own.
  public sealed class ReplayLog {
   public sealed class Shot {
-   public int O, S, End, Initial, Power; public bool Pierce, Blocked; public List<Cell> Cells; public List<Vector2> Pts; public float Len, Split; public Vector2? Contact;
+   public int O, S, End, Initial, Power, Zero; public bool Pierce, Blocked; public List<Cell> Cells; public List<Vector2> Pts; public float Len, Split; public Vector2? Contact;
    public int EventIdx = -1, HitIdx = -1;
   }
   public sealed class Ev { public string T, Cap; public List<Shot> Shots = new List<Shot>(); public bool Hit; }
   public sealed class Snap {
-   public int[,] H = new int[2, 3], P = new int[2, 3]; public bool[,] Z = new bool[2, 3]; public int[] Rungs = new int[3], Riders = new int[3]; public bool[] Walls = new bool[3];
+   public int[,] H = new int[2, 3], P = new int[2, 3]; public bool[,] Z = new bool[2, 3]; public int[,] ZN = new int[2, 3]; public int[] Rungs = new int[3], Riders = new int[3]; public bool[] Walls = new bool[3];
    public int[] Pend = new int[2]; public List<Shot> Shots = new List<Shot>(); public List<Vector2> Gates = new List<Vector2>();
-   public Snap Clone() { var s = (Snap)MemberwiseClone(); s.H = (int[,])H.Clone(); s.P = (int[,])P.Clone(); s.Z = (bool[,])Z.Clone(); s.Rungs = (int[])Rungs.Clone(); s.Riders = (int[])Riders.Clone(); s.Walls = (bool[])Walls.Clone(); s.Pend = (int[])Pend.Clone(); return s; }
+   public Snap Clone() { var s = (Snap)MemberwiseClone(); s.H = (int[,])H.Clone(); s.P = (int[,])P.Clone(); s.Z = (bool[,])Z.Clone(); s.ZN = (int[,])ZN.Clone(); s.Rungs = (int[])Rungs.Clone(); s.Riders = (int[])Riders.Clone(); s.Walls = (bool[])Walls.Clone(); s.Pend = (int[])Pend.Clone(); return s; }
   }
   public sealed class Step {
    public int R; public string K, T; public int C = -1, Ch = -1, Row = -1, Edge = -1, Rider = -1, Who = -1, Att = -1; public bool Removed; public char G = ' ';
@@ -29,7 +29,7 @@ namespace Breach.UI {
   public void Clear() { Steps.Clear(); Mismatch.Clear(); round = 1; }
 
   static Snap Capture(Battle b) {
-   var s = new Snap(); s.H = (int[,])b.Health.Clone(); s.P = (int[,])b.Power.Clone(); s.Z = (bool[,])b.Pierce.Clone(); s.Rungs = (int[])b.Rungs.Clone(); s.Riders = (int[])b.RungRiders.Clone(); s.Walls = (bool[])b.Walls.Clone();
+   var s = new Snap(); s.H = (int[,])b.Health.Clone(); s.P = (int[,])b.Power.Clone(); s.Z = (bool[,])b.Pierce.Clone(); s.ZN = (int[,])b.Zero.Clone(); s.Rungs = (int[])b.Rungs.Clone(); s.Riders = (int[])b.RungRiders.Clone(); s.Walls = (bool[])b.Walls.Clone();
    s.Pend[0] = b.Hidden.Count(h => h.Owner == 0); s.Pend[1] = b.Hidden.Count(h => h.Owner == 1); s.Gates = Gates(s); return s;
   }
   static Battle Board(Snap s) { var b = new Battle(1, 0); b.Rungs = (int[])s.Rungs.Clone(); b.RungRiders = (int[])s.Riders.Clone(); b.Walls = (bool[])s.Walls.Clone(); b.Health = (int[,])s.H.Clone(); return b; }
@@ -50,7 +50,7 @@ namespace Breach.UI {
    if (before == null) return; var st = before.Clone(); st.Shots = new List<Shot>();
    foreach (var s in hidden) {
     st.Pend[s.Owner] = Mathf.Max(0, st.Pend[s.Owner] - 1);
-    if (s.Card == Card.ZeroDay) { st.P[s.Owner, s.Target]++; st.Z[s.Owner, s.Target] = true; } else if (s.Card == Card.Firewall) st.Walls[s.Target] = true;
+    if (s.Card == Card.ZeroDay) { st.P[s.Owner, s.Target]++; st.ZN[s.Owner, s.Target]++; st.Z[s.Owner, s.Target] = true; } else if (s.Card == Card.Firewall) st.Walls[s.Target] = true;
     st.Gates = Gates(st);
     Steps.Add(new Step { R = round, K = "reveal", T = (s.Owner == 0 ? "나" : "상대") + " · " + Cards.Names[(int)s.Card] + " 공개", C = (int)s.Card, Who = s.Owner, Ch = s.Card == Card.Overflow ? -1 : s.Target + 1, S = st.Clone() });
    }
@@ -70,15 +70,16 @@ namespace Breach.UI {
   static List<Ev> Resolve(Snap st, List<Shot> shots) {
    var events = new List<Ev>(); var board = Board(st);
    for (int p = 0; p < 2; p++) for (int c = 0; c < 3; c++) if (st.P[p, c] > 0) {
-    var pk = board.Route(p, c); var s = new Shot { O = p, S = c, End = pk.End, Cells = pk.Cells, Initial = st.P[p, c], Power = st.P[p, c], Pierce = st.Z[p, c] }; s.Pts = BattleController.Points(pk);
+    var pk = board.Route(p, c); var s = new Shot { O = p, S = c, End = pk.End, Cells = pk.Cells, Initial = st.P[p, c], Power = st.P[p, c], Pierce = st.Z[p, c], Zero = Mathf.Min(st.ZN[p, c], st.P[p, c]) }; s.Pts = BattleController.Points(pk);
     if (s.Cells.Any(x => st.Walls[x.Lane])) { s.Blocked = true; s.Power = 0; var e = new Ev { T = "방화벽 · 패킷 소멸", Cap = "서버 앞 차단" }; e.Shots.Add(s); events.Add(e); }
     shots.Add(s);
    }
    foreach (var a in shots.Where(x => x.O == 0).ToList()) foreach (var bb in shots.Where(x => x.O == 1).ToList()) {
     if (a.Power <= 0 || bb.Power <= 0 || !a.Cells.Any(x => bb.Cells.Any(y => x.Row == y.Row && x.Lane == y.Lane))) continue; string t, cap;
-    if (a.Pierce && !bb.Pierce) { bb.Power = 0; t = "제로데이 · 상대 패킷 관통"; cap = "관통"; }
-    else if (bb.Pierce && !a.Pierce) { a.Power = 0; t = "제로데이 · 내 패킷 관통"; cap = "관통"; }
-    else { int n = Mathf.Min(a.Power, bb.Power); a.Power -= n; bb.Power -= n; t = "공격 상쇄 · " + n; cap = "공격 상쇄"; }
+    // Battle.Resolve 와 같은 새 제로데이 규칙: 일반 몫끼리만 상쇄, 제로데이 몫은 통과
+    int na = a.Power - a.Zero, nb = bb.Power - bb.Zero;
+    if (na > 0 && nb > 0) { int n = Mathf.Min(na, nb); a.Power -= n; bb.Power -= n; t = "공격 상쇄 · " + n; cap = "공격 상쇄"; }
+    else { t = "제로데이 · 통과"; cap = "통과"; }
     var cell = a.Cells.Where(x => bb.Cells.Any(y => x.Row == y.Row && x.Lane == y.Lane)).OrderBy(x => Mathf.Abs(x.Row - 1)).ThenBy(x => x.Lane).First();
     a.Contact = bb.Contact = new Vector2(BattleController.LaneX[cell.Lane], cell.Row < 0 ? 201 : cell.Row > 2 ? 777 : BattleController.RowY[cell.Row]);
     var ev = new Ev { T = t, Cap = cap }; ev.Shots.Add(a); ev.Shots.Add(bb); events.Add(ev);

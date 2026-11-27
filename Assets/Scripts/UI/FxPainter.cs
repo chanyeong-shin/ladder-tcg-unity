@@ -127,8 +127,49 @@ namespace Breach.UI {
    for (int k = 0; k < 4; k++) for (int i = 0; i <= seg; i++) { float a = -Mathf.PI / 2 + (k + i / (float)seg) * Mathf.PI / 2; p.Add(centers[k] + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r); }
    StrokeClosed(p, lw, c);
   }
+  // 13주차 제로데이 마름모: 한 변 2s 정사각형을 45도 돌린 것(ctx.rotate(PI/4); fillRect(-s, -s, 2s, 2s))
+  public void FillDiamond(Vector2 c, float s, Color col) { if (s <= 0 || col.a <= 0) return; float r = s * 1.41421356f; FillPoly(new[] { c + new Vector2(0, -r), c + new Vector2(r, 0), c + new Vector2(0, r), c + new Vector2(-r, 0) }, col); }
   // Rect outside a hole (ctx.rect(screen); ctx.rect(hole); fill('evenodd'))
   public void FillOutside(Rect hole, Color c) { FillRect(0, 0, 1920, hole.y, c); FillRect(0, hole.yMax, 1920, 1080 - hole.yMax, c); FillRect(0, hole.y, hole.x, hole.height, c); FillRect(hole.xMax, hole.y, 1920 - hole.xMax, hole.height, c); }
+ }
+
+ // 13주차 발동 "어둡게" (06_show.js mountShow dim): 화면을 rgba(0,0,0,a)로 덮고 destination-out 으로 구멍을 낸다.
+ //   cols  = 세로 기둥(가로 선형 그라데이션 x-w .. x+w, 0.3~0.7 구간 완전히 밝음)
+ //   spots = 둥근 빛(반지름 r, 0.55r 까지 완전히 밝음)
+ //   paths = 길 모양(굵기 150 둥근 선을 blur(24px)로 흐림 -> 거리 27 px 까지 밝고 123 px 에서 어두움, 그 사이 smoothstep)
+ // 구멍이 겹치면 destination-out 처럼 남은 어둠에 (1 - 밝음)을 곱한다. 층(Layers)이 둘 이상이면 각 층의 어둠 중 큰 쪽.
+ // 격자(기본 24 px) 꼭짓점마다 어둠을 계산해 정점 색으로 칠한다. 판 좌표(1920 x 1080, y 아래), 카메라 확대에 대비해 둘레 240 px 더 덮는다.
+ [RequireComponent(typeof(CanvasRenderer))]
+ public sealed class FxDim : MaskableGraphic {
+  public sealed class Layer { public float Alpha; public readonly List<Vector3> Spots = new List<Vector3>(); public readonly List<Vector2> Cols = new List<Vector2>(); public readonly List<IList<Vector2>> Paths = new List<IList<Vector2>>(); }
+  public readonly Layer[] Layers = { new Layer(), new Layer() };
+  public float Step = 24, Margin = 240; public Color Ink = Color.black;
+  public static FxDim Create(string name, Transform parent) { var r = Ui.Rect(name, parent, 0, 0, 1920, 1080); var d = r.gameObject.AddComponent<FxDim>(); d.raycastTarget = false; return d; }
+  public void Refresh() { SetVerticesDirty(); }
+  protected override void OnPopulateMesh(VertexHelper vh) {
+   vh.Clear(); bool any = false; foreach (var l in Layers) if (l.Alpha > 0) any = true; if (!any) return;
+   int nx = Mathf.CeilToInt((1920 + 2 * Margin) / Step) + 1, ny = Mathf.CeilToInt((1080 + 2 * Margin) / Step) + 1;
+   var v = UIVertex.simpleVert;
+   for (int j = 0; j < ny; j++) for (int i = 0; i < nx; i++) {
+    var p = new Vector2(Mathf.Min(-Margin + i * Step, 1920 + Margin), Mathf.Min(-Margin + j * Step, 1080 + Margin)); float a = 0;
+    foreach (var l in Layers) if (l.Alpha > 0) a = Mathf.Max(a, l.Alpha * Dark(l, p));
+    v.position = new Vector3(p.x, -p.y); var col = Ink; col.a *= Mathf.Clamp01(a); v.color = col; vh.AddVert(v);
+   }
+   for (int j = 0; j < ny - 1; j++) for (int i = 0; i < nx - 1; i++) { int k = j * nx + i; vh.AddTriangle(k, k + 1, k + nx + 1); vh.AddTriangle(k, k + nx + 1, k + nx); }
+  }
+  // 남은 어둠 비율(1 = 구멍 없음)
+  static float Dark(Layer l, Vector2 p) {
+   float keep = 1;
+   foreach (var c in l.Cols) { float d = Mathf.Abs(p.x - c.x), w = c.y; keep *= d <= .4f * w ? 0 : d >= w ? 1 : (d - .4f * w) / (.6f * w); }
+   foreach (var s in l.Spots) { float d = Vector2.Distance(p, new Vector2(s.x, s.y)), r = s.z; keep *= d <= .55f * r ? 0 : d >= r ? 1 : (d - .55f * r) / (.45f * r); }
+   foreach (var path in l.Paths) { float d = PolyDistance(path, p), k = Mathf.Clamp01((d - 27) / 96f); keep *= k * k * (3 - 2 * k); }
+   return keep;
+  }
+  static float PolyDistance(IList<Vector2> path, Vector2 p) {
+   if (path.Count == 1) return Vector2.Distance(path[0], p); float best = float.MaxValue;
+   for (int i = 1; i < path.Count; i++) { Vector2 a = path[i - 1], ab = path[i] - a; float t = ab.sqrMagnitude > 1e-6f ? Mathf.Clamp01(Vector2.Dot(p - a, ab) / ab.sqrMagnitude) : 0; best = Mathf.Min(best, Vector2.Distance(p, a + ab * t)); }
+   return best;
+  }
  }
 
  // Polyline helpers shared by the week 12 effects

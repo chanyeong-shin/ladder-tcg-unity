@@ -14,9 +14,9 @@ namespace Breach.UI {
    var held=controller.hand.GetComponentsInChildren<CardView>().First(v=>v.index==0);
    var drag=new PointerEventData(EventSystem.current){position=RectTransformUtility.WorldToScreenPoint(null,held.transform.TransformPoint(new Vector3(50,-50,0)))};
    held.OnBeginDrag(drag);drag.position=RectTransformUtility.WorldToScreenPoint(null,controller.stage.TransformPoint(new Vector3(702,-400,0)));held.OnDrag(drag);
-   // week 12 item 8 (08_drag.js "small"): over the board the card is .6x at 40% opacity (it used to hide over a valid rail)
+   // week 12 item 8 (08_drag.js "small"): over the board the card is .6x at 75% opacity (week 13 05_drop.js; was 40%) (it used to hide over a valid rail)
    yield return new WaitForSecondsRealtime(.3f);
-   if(Mathf.Abs(held.GetComponent<CanvasGroup>().alpha-.4f)>.01f||Mathf.Abs(held.transform.localScale.x-.6f)>.01f){Fail("Card over the board is not .6x / 40%: "+held.GetComponent<CanvasGroup>().alpha+" "+held.transform.localScale.x);yield break;}
+   if(Mathf.Abs(held.GetComponent<CanvasGroup>().alpha-.75f)>.01f||Mathf.Abs(held.transform.localScale.x-.6f)>.01f){Fail("Card over the board is not .6x / 75%: "+held.GetComponent<CanvasGroup>().alpha+" "+held.transform.localScale.x);yield break;}
    drag.position=RectTransformUtility.WorldToScreenPoint(null,controller.stage.TransformPoint(new Vector3(1500,-400,0)));held.OnDrag(drag);yield return new WaitForSecondsRealtime(.3f);
    if(held.GetComponent<CanvasGroup>().alpha!=1){Fail("Card did not return to full opacity off the board");yield break;}
    held.OnEndDrag(drag);while(!controller.CanInput)yield return null;if(controller.State.Hands[0].Count!=2){Fail("Off-rail drop consumed card");yield break;}

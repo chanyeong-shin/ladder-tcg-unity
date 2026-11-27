@@ -17,14 +17,14 @@ namespace Breach.UI {
    Vector2 button=((RectTransform)c.endButton.transform).anchoredPosition;Vector3 hand=c.hand.localScale;
    var fixedHead=BattleController.Find(c.backgrounds[2].transform,"Source_64_438") as RectTransform;Vector2 headOrigin=fixedHead.anchoredPosition;
    for(int scenario=0;scenario<6;scenario++){
-    c.State.Attacker=0;c.State.Phase=0;c.State.Winner=-1;c.State.Hidden.Clear();Array.Clear(c.State.Power,0,6);Array.Clear(c.State.Walls,0,3);Array.Clear(c.State.Pierce,0,6);
+    c.State.Attacker=0;c.State.Phase=0;c.State.Winner=-1;c.State.Hidden.Clear();Array.Clear(c.State.Power,0,6);Array.Clear(c.State.Walls,0,3);Array.Clear(c.State.Pierce,0,6);Array.Clear(c.State.Zero,0,6);
     c.State.Hands[0].Clear();c.State.Hands[1].Clear();for(int i=0;i<3;i++){c.State.Health[0,i]=c.State.Health[1,i]=1;c.State.Rungs[i]=-1;c.State.RungRiders[i]=-1;}
     c.State.Power[0,1]=scenario==1?2:1;
     if(scenario==0){c.State.Rungs[2]=1;c.State.Rungs[0]=0;}
     if(scenario==1)c.State.Power[1,1]=1;
     if(scenario==2)c.State.Hidden.Add(new Secret(1,Card.Firewall,1));
     if(scenario==3)c.State.Power[1,1]=1;
-    if(scenario==4){c.State.Power[1,1]=1;c.State.Pierce[0,1]=true;}
+    if(scenario==4){c.State.Power[1,1]=1;c.State.Pierce[0,1]=true;c.State.Zero[0,1]=1;} // 새 규칙: 내 1발이 제로데이 → 서로 지나감
     if(scenario==5)c.State.Health[1,1]=0;
     c.Render();var report=c.State.Resolve();c.Render(); // Restore pre-impact server shells for the fixture.
     foreach(var server in c.servers)server.Render(report.Before[server.owner,server.channel],report.Packets.Where(p=>p.Owner==server.owner&&p.Start==server.channel).Select(p=>p.Initial).FirstOrDefault());

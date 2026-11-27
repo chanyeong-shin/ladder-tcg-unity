@@ -56,9 +56,13 @@ namespace Breach.UI
             for (int i = 0; i < laneTargets.Length; i++) { int t = i; laneTargets[i].onClick.AddListener(() => Use(t, false)); }
             for (int i = 0; i < rungTargets.Length; i++) { int t = i; rungTargets[i].onClick.AddListener(() => Use(t, true)); }
             hints = Ui.Rect("배치 가능한 지점", game.transform, 0, 0, 1920, 1080); hints.SetSiblingIndex(paths.GetSiblingIndex() + 1);
+            // week 13 drop hint (05_drop.js mkMix('badge')): DropTargetFx draws the dark board, holes, circuit traces and DELETE badge while dragging
+            dropFx = gameObject.AddComponent<DropTargetFx>(); dropFx.Initialize(this);
             var socketHit = Ui.Rect("소켓 사용 판정", game.transform, 223, 381, 228, 236); var hitImage = socketHit.gameObject.AddComponent<Image>(); hitImage.color = Color.clear; socketTarget = socketHit.gameObject.AddComponent<Button>(); socketTarget.targetGraphic = hitImage; socketTarget.transition = Selectable.Transition.None; socketTarget.onClick.AddListener(() => Use(0, false)); socketHit.gameObject.SetActive(false);
             // user 11-26 "쓸대 없는 안내는 없에고 싶음 보기 안좋음 클릭 안내 같은거": no control hints on screen (holding Space / the mouse still speeds up)
             deck = gameObject.AddComponent<DeckView>(); deck.Initialize(this); pause = gameObject.AddComponent<PauseMenu>(); pause.Initialize(this);
+            // week 13 (11_fxpick.js pTiles): bottom-right activation effect picker; it also moves statusLabel below its tiles
+            gameObject.AddComponent<EffectPicker>().Initialize(this);
             title.SetActive(true); game.SetActive(false); result.SetActive(false); logPanel.SetActive(false); sequences.ShowTitle();
         }
         void Update()
@@ -69,7 +73,7 @@ namespace Breach.UI
             if (deck && deck.IsOpen) { holding = false; deck.HandleKeys(); return; }
             if (Paused) { holding = false; pause.HandleKeys(); return; }
             if (result.activeSelf && sequences.ReplayOpen) { if (Input.GetKeyDown(KeyCode.Escape)) sequences.CloseReplay(); return; }
-            holding = (Input.GetMouseButton(0) || Input.GetKey(KeyCode.Space)) && State != null && busy && !dragging && game.activeSelf && !result.activeSelf;
+            holding = (Input.GetMouseButton(0) && !EffectPicker.PointerOver || Input.GetKey(KeyCode.Space)) && State != null && busy && !dragging && game.activeSelf && !result.activeSelf;
             if (Input.GetKeyDown(KeyCode.Return) && result.activeSelf) { RequestBegin(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && result.activeSelf) { ReturnToTitle(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && bridge) CancelBridge();
@@ -235,8 +239,17 @@ namespace Breach.UI
         // Week 12 item 4: a click no longer selects (CardView.OnPointerClick opens the zoom instead). Select stays as the entry the checks
         // and BeginDrag use for "this card is picked up", followed by Use(target).
         public void Select(int index) { if (!CanInput || index < 0 || index >= cards.Count) return; selected = selected == index ? -1 : index; if (selected >= 0) hold.Show(); else hold.Hide(); LayoutHand(selected); RefreshTargets(); }
-        public void BeginDrag(CardView v) { if (!CanInput) return; if (handTween != null) StopCoroutine(handTween); ClearPreview(); hold.Show(); selected = v.index; if (DrawLocked(v.index)) handFx.LockedDrag(); dragging = true; dragged = v; v.transform.SetParent(stage, false); v.transform.SetAsLastSibling(); var g = v.gameObject.AddComponent<CanvasGroup>(); g.blocksRaycasts = false; RefreshTargets(); }
-        public int AmmoDropTarget(Vector2 screen) { if (!dragging || selected < 0 || selected >= State.Hands[0].Count) return -1; Card card = State.Hands[0][selected]; if (card != Card.Inject && card != Card.ZeroDay) return -1; Vector2 p; RectTransformUtility.ScreenPointToLocalPointInRectangle(stage, screen, null, out p); p.y = -p.y; if (p.y < 231 || p.y > 832) return -1; int lane = Enumerable.Range(0, 3).OrderBy(i => Mathf.Abs(p.x - LaneX[i])).First(); float width = p.y >= 722 ? 50 : 28; return Mathf.Abs(p.x - LaneX[lane]) <= width && State.CanPlay(0, selected, lane) ? lane : -1; }
+        public void BeginDrag(CardView v) { if (!CanInput) return; if (handTween != null) StopCoroutine(handTween); ClearPreview(); hold.Show(); selected = v.index; if (DrawLocked(v.index)) handFx.LockedDrag(); dragging = true; dragScreenSet = false; dragged = v; v.transform.SetParent(stage, false); v.transform.SetAsLastSibling(); var g = v.gameObject.AddComponent<CanvasGroup>(); g.blocksRaycasts = false; RefreshTargets(); }
+        // --- week 13 drop hint (DropTargetFx) ---------------------------------------------------------------------------------
+        // CardView.OnDrag calls AmmoDropTarget with every pointer move (real or a check's PointerEventData), so the last drag
+        // position is remembered there; DropTargetFx reads it in stage pixels (y down).
+        DropTargetFx dropFx; Vector2 dragScreen; bool dragScreenSet;
+        public CardView DraggedView { get { return dragging ? dragged : null; } }
+        public int DragIndex { get { return dragging ? selected : -1; } }
+        public Vector2 DragStagePoint { get { Vector2 p; RectTransformUtility.ScreenPointToLocalPointInRectangle(stage, dragScreenSet ? dragScreen : (Vector2)Input.mousePosition, null, out p); p.y = -p.y; return p; } }
+        bool DropFxOwns(Card card) { return dragging && (card == Card.Inject || card == Card.ZeroDay || card == Card.Reroute); }
+        // ------------------------------------------------------------------------------------------------------------------------
+        public int AmmoDropTarget(Vector2 screen) { dragScreen = screen; dragScreenSet = true; if (!dragging || selected < 0 || selected >= State.Hands[0].Count) return -1; Card card = State.Hands[0][selected]; if (card != Card.Inject && card != Card.ZeroDay) return -1; Vector2 p; RectTransformUtility.ScreenPointToLocalPointInRectangle(stage, screen, null, out p); p.y = -p.y; if (p.y < 231 || p.y > 832) return -1; int lane = Enumerable.Range(0, 3).OrderBy(i => Mathf.Abs(p.x - LaneX[i])).First(); float width = p.y >= 722 ? 50 : 28; return Mathf.Abs(p.x - LaneX[lane]) <= width && State.CanPlay(0, selected, lane) ? lane : -1; }
         public void Drop(Vector2 screen)
         {
             if (!dragging) return; Vector2 p; RectTransformUtility.ScreenPointToLocalPointInRectangle(stage, screen, null, out p); p.y = -p.y; int ammoTarget = AmmoDropTarget(screen); dragging = false; var v = dragged; dragged = null; if (v) { var rect = (RectTransform)v.transform; playOrigin = new Vector2(rect.anchoredPosition.x, -rect.anchoredPosition.y); playSize = Vector2.Scale(rect.sizeDelta, new Vector2(rect.localScale.x, rect.localScale.y)); }
@@ -278,6 +291,8 @@ namespace Breach.UI
             for (int i = 0; i < laneTargets.Length; i++) { laneTargets[i].gameObject.SetActive(!(selectedCard && card == Card.Reroute)); laneTargets[i].interactable = selectedCard && card != Card.Reroute && State.CanPlay(0, selected, i); laneTargets[i].transition = Selectable.Transition.None; laneTargets[i].targetGraphic.color = Color.clear; }
             for (int i = 0; i < rungTargets.Length; i++) { bool active = selectedCard && card == Card.Reroute; rungTargets[i].gameObject.SetActive(active); rungTargets[i].interactable = active && State.CanPlay(0, selected, i); rungTargets[i].transition = Selectable.Transition.None; rungTargets[i].targetGraphic.color = Color.clear; }
             if (socketTarget) socketTarget.gameObject.SetActive(selectedCard && (card == Card.Buffer || card == Card.Overflow)); if (!selectedCard || !hints) return;
+            // week 13: while an attack / rung card is dragged DropTargetFx replaces these hints (the server flare and the faint gold rung lines)
+            if (DropFxOwns(card)) return;
             if (card == Card.Reroute) { for (int t = 0; t < 6; t++) if (State.CanPlay(0, selected, t)) Ui.Line("합법 회선 자리", hints, new Vector2(LaneX[t % 2] + 12, RowY[t / 2]), new Vector2(LaneX[t % 2 + 1] - 12, RowY[t / 2]), new Color(1, .8f, .2f, .55f), 2); }
             else if (card == Card.Buffer || card == Card.Overflow) Ui.Box("소켓에 사용", hints, 223, 381, 228, 236, Ui.Cyan, false, 2);
             else for (int lane = 0; lane < 3; lane++) if (State.CanPlay(0, selected, lane)) { if (card == Card.Firewall) Ui.Box("차단할 채널", hints, LaneX[lane] - 14, 477, 28, 40, Ui.Gold, false, 2); else { // HTML tab 4 targets(): r 18 at y 720, fill rgba(56,217,255,.12), stroke #7fe9ff 3, stroke-opacity .55+.45|sin(4u+i)|
@@ -288,6 +303,8 @@ namespace Breach.UI
         {
             if (State == null || busy) return; ClearPreview(); if (selected >= 0 && selected < State.Hands[0].Count) { Card card = State.Hands[0][selected]; if ((card == Card.Reroute) != rung) return; if (card == Card.Buffer || card == Card.Overflow) return; if (!State.CanPlay(0, selected, target)) return; if (card == Card.Firewall) { Ui.Line("차단 채널 미리보기", paths, new Vector2(LaneX[target], 231), new Vector2(LaneX[target], 763), Ui.Gold, 3); return; } }
             else if (rung) return;
+            // week 13: dragging onto the existing rung removes it; DropTargetFx blinks that rung red, so no gold "place" line there
+            if (rung && dragging && target >= 0 && target < 6 && State.Rungs[target / 2] >= 0) return;
             if (rung) { if (selected >= 0 && State.CanPlay(0, selected, target)) Ui.Line("배치 미리보기", paths, new Vector2(LaneX[target % 2], RowY[target / 2]), new Vector2(LaneX[target % 2 + 1], RowY[target / 2]), Ui.Gold, 5); return; }
             var p = State.Route(0, target); var points = Points(p); for (int i = 1; i < points.Count; i++) Ui.Line("공개 경로", paths, points[i - 1], points[i], new Color(1, .8f, .2f, .65f), 3);
             if (CanInput) statusLabel.text = "CH " + (target + 1) + " → 상대 CH " + (p.End + 1) + " · 공개된 경로 기준";

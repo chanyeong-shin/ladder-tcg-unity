@@ -9,9 +9,11 @@ using UnityEngine.EventSystems;
 namespace Breach.UI {
  // --week13-check <dir> 에서만 돈다. 13주차 빔 연출(_도구/시안13주차/tabs/04_beam.js A안)을 시안과 같은 장면·같은 시각에 1920x1080으로 캡처한다.
  // 장면 1: 내 CH1 위력 2 단독 + CH2 내 3 대 상대 2 정면. 장면 2: 상대 CH3 위력 1 단독 + CH2 2 대 2 정면 (시안 SCN 그대로).
- // 시각 T 는 시안과 같이 충전 시작부터의 초. 캡처 순간마다 FxClock.Scale = 0 으로 시계를 멈추고 실제 시각을 week13-moments.txt 에 적는다.
+ // 장면 3 (2026-11-27 제로데이 새 규칙, 12_zeroday.js 장면 1 · 09_impact.js ⑦): 내 CH2 3(제로데이 1) 대 상대 3 — 일반 2 대 3 힘겨루기, 제로데이 1 통과 착탄.
+ // 시각 T 는 시안과 같이 충전 시작부터의 초(충전 1.3초 = 07_windup.js MIXW, 힘겨루기 1.4초 = 09_impact.js planU).
+ // 캡처 순간마다 FxClock.Scale = 0 으로 시계를 멈추고 실제 시각을 week13-moments.txt 에 적는다.
  public sealed class Week13Check : MonoBehaviour {
-  const float Charge = .65f;
+  const float Charge = CombatPresentation.ChargeSeconds, Struggle = CombatPresentation.StruggleSeconds;
   BattleController c; string dir; bool failed; readonly List<string> passed = new List<string>(), moments = new List<string>();
   [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
   static void Boot() { if (Array.IndexOf(Environment.GetCommandLineArgs(), "--week13-check") >= 0) FindFirstObjectByType<BattleController>().gameObject.AddComponent<Week13Check>(); }
@@ -42,14 +44,16 @@ namespace Breach.UI {
    passed.Add("enemy turn scan ink red " + ink);
 
    // 빔 장면 2개
-   yield return Scene(1, new[] { (0, 0, 2), (0, 1, 3), (1, 1, 2) }); if (failed) yield break;
-   yield return Scene(2, new[] { (1, 2, 1), (0, 1, 2), (1, 1, 2) }); if (failed) yield break;
+   yield return Scene(1, new[] { (0, 0, 2, 0), (0, 1, 3, 0), (1, 1, 2, 0) }); if (failed) yield break;
+   yield return Scene(2, new[] { (1, 2, 1, 0), (0, 1, 2, 0), (1, 1, 2, 0) }); if (failed) yield break;
+   yield return Scene(3, new[] { (0, 1, 3, 1), (1, 1, 3, 0) }); if (failed) yield break;
    File.WriteAllText(Path.Combine(dir, "week13-moments.txt"), string.Join("\n", moments));
    File.WriteAllText(Path.Combine(dir, "week13-result.txt"), "PASS: " + string.Join("; ", passed)); Application.Quit(0);
   }
-  // 시안과 같은 시각(충전 시작부터 T초)들: 충전 .40, 뻗는 중 .85, 맞닿음 +.12, 단독 착탄 F+.1, 펌프 맞닿음+.5, 끝 맞닿음+1.1, 착탄 맞닿음+1.3
-  IEnumerator Scene(int n, (int owner, int lane, int power)[] shots) {
-   Fixture(0, 2); foreach (var s in shots) c.State.Power[s.owner, s.lane] = s.power;
+  // 시안과 같은 시각(충전 시작부터 T초)들: 섬광 .05, 충전 .60, 흰색으로 꽉 참 1.25, 뻗는 중 CH+.2, 맞닿음 +.12, 단독 착탄 CH+F+.1,
+  // 펌프 맞닿음+.7, 승부 파동 맞닿음+STR+.12, 착탄 맞닿음+STR+.3
+  IEnumerator Scene(int n, (int owner, int lane, int power, int zero)[] shots) {
+   Fixture(0, 2); foreach (var s in shots) { c.State.Power[s.owner, s.lane] = s.power; c.State.Zero[s.owner, s.lane] = s.zero; c.State.Pierce[s.owner, s.lane] = s.zero > 0; }
    for (int i = 0; i < 3; i++) c.State.Health[0, i] = c.State.Health[1, i] = 3;
    c.Render(); var report = c.State.Resolve(); c.Render();
    foreach (var server in c.servers) server.Render(report.Before[server.owner, server.channel], report.Packets.Where(p => p.Owner == server.owner && p.Start == server.channel).Select(p => p.Initial).FirstOrDefault());
@@ -58,7 +62,7 @@ namespace Breach.UI {
    StartCoroutine(Run(pres.Play(report), () => done = true)); StartCoroutine(Watch(() => done, phases, clashPhases));
    yield return Await(() => pres.Phase == "charge", "scene " + n + " charge"); if (failed) yield break;
    float c0 = pres.ClashContact; if (c0 < 0) { Fail("Scene " + n + " has no head-on clash"); yield break; }
-   var list = new List<(string name, float T)> { ("charge", .40f), ("beam", .85f), ("contact", Charge + c0 + .12f), ("free-hit", Charge + .6f), ("pump", Charge + c0 + .5f), ("break", Charge + c0 + 1.1f), ("land", Charge + c0 + 1.3f) };
+   var list = new List<(string name, float T)> { ("flash", .05f), ("charge", .60f), ("charge-full", 1.25f), ("beam", Charge + .2f), ("contact", Charge + c0 + .12f), ("free-hit", Charge + .6f), ("pump", Charge + c0 + .7f), ("break", Charge + c0 + Struggle + .12f), ("land", Charge + c0 + Struggle + .3f) };
    foreach (var m in list.OrderBy(x => x.T)) {
     yield return Await(() => m.T < Charge ? (pres.Phase == "charge" && pres.ChargeTime >= m.T) : (pres.Phase == "flight" && pres.FlightTime >= m.T - Charge), "scene " + n + " " + m.name); if (failed) yield break;
     FxClock.Scale = 0; yield return null;
@@ -83,7 +87,7 @@ namespace Breach.UI {
   Vector2 Center(CardView v) { var r = (RectTransform)v.transform; return RectTransformUtility.WorldToScreenPoint(null, r.TransformPoint(r.rect.center)); }
   Vector2 Screen(float x, float y) { return RectTransformUtility.WorldToScreenPoint(null, c.stage.TransformPoint(new Vector3(x, -y, 0))); }
   void Fixture(int attacker, int phase) {
-   var s = c.State; s.Attacker = attacker; s.Phase = phase; s.Winner = -1; s.DrawUsed = false; s.Hidden.Clear(); Array.Clear(s.Power, 0, 6); Array.Clear(s.Walls, 0, 3); Array.Clear(s.Pierce, 0, 6);
+   var s = c.State; s.Attacker = attacker; s.Phase = phase; s.Winner = -1; s.DrawUsed = false; s.Hidden.Clear(); Array.Clear(s.Power, 0, 6); Array.Clear(s.Walls, 0, 3); Array.Clear(s.Pierce, 0, 6); Array.Clear(s.Zero, 0, 6);
    s.Hands[0].Clear(); s.Hands[1].Clear(); for (int i = 0; i < 3; i++) { s.Health[0, i] = s.Health[1, i] = 1; s.Rungs[i] = -1; s.RungOwners[i] = -1; s.RungRiders[i] = -1; }
   }
   IEnumerator Run(IEnumerator routine, Action done) { yield return routine; done(); }

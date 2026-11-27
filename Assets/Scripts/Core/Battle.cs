@@ -12,11 +12,12 @@ namespace Breach {
  }
  public struct Secret {public int Owner,Target;public Card Card;public Secret(int owner,Card card,int target){Owner=owner;Card=card;Target=target;}}
  public struct Cell {public int Row,Lane;public Cell(int row,int lane){Row=row;Lane=lane;}}
- public class Packet {public int Owner,Start,End,Power,Initial;public bool Pierce,Blocked;public List<Cell> Cells=new List<Cell>();}
+ // Zero: Power 중 제로데이 몫(충돌하지 않고 지나감). 제로데이 새 규칙(2026-11-27 사용자 "3장전했어도 그중 하나가 제로데이면 2는 상대 탄과 상호작용하지만 1발은 그냥 상호작용을 안하고 통과함. 하지만 벽 설치 하는 카드 그거에는 막히면 좋을듯")
+ public class Packet {public int Owner,Start,End,Power,Initial,Zero;public bool Pierce,Blocked;public List<Cell> Cells=new List<Cell>();}
  public class Resolution {public List<Packet> Packets=new List<Packet>();public List<Secret> Revealed=new List<Secret>();public List<string> Events=new List<string>();public int[,] Before;}
  public sealed class Battle {
   public int[,] Health=new int[2,3],Power=new int[2,3];
-  public bool[,] Pierce=new bool[2,3];public bool[] Walls=new bool[3];
+  public bool[,] Pierce=new bool[2,3];public int[,] Zero=new int[2,3];public bool[] Walls=new bool[3];
   public int[] Rungs={-1,-1,-1},RungOwners={-1,-1,-1},RungRiders={-1,-1,-1};public int LastRemovedRider=-1;
   // Color bridge (2026-11-21): a REROUTE target is slot + 6*color. Slot 0..5 = row*2+edge.
   // Color 0 blue = only the placer rides it, 1 red = only the opponent, 2 yellow = both.
@@ -32,7 +33,7 @@ namespace Breach {
   public bool DrawUsed;
   public static bool IsDraw(Card c){return c==Card.Buffer||c==Card.Overflow;}
   uint random;readonly List<Snapshot> history=new List<Snapshot>();
-  sealed class Snapshot {public int[,] Power;public bool[,] Pierce;public int[] Rungs,Owners,Riders;public List<Card>[] Hands;public List<Secret> Hidden;public uint Random;}
+  sealed class Snapshot {public int[,] Power,Zero;public bool[,] Pierce;public int[] Rungs,Owners,Riders;public List<Card>[] Hands;public List<Secret> Hidden;public uint Random;}
   public Battle(uint seed,int attacker=-1){random=seed==0?1:seed;Attacker=attacker<0?Next(2):attacker;for(int p=0;p<2;p++){for(int c=0;c<3;c++)Health[p,c]=1;Draw(p,3);Draw(p,1);}SaveAction();}
   public int Next(int max){random^=random<<13;random^=random>>17;random^=random<<5;return (int)(random%(uint)max);}
   // Draw record (week 12 deck view, read only for the rules): every card that actually entered each hand, oldest first.
@@ -42,10 +43,10 @@ namespace Breach {
   // Turn start: nothing before this point can be undone. Each Play pushes one step;
   // a draw reveals new cards, so it locks itself and every earlier step.
   public void SaveAction(){history.Clear();}
-  Snapshot Capture(){return new Snapshot{Power=(int[,])Power.Clone(),Pierce=(bool[,])Pierce.Clone(),Rungs=(int[])Rungs.Clone(),Owners=(int[])RungOwners.Clone(),Riders=(int[])RungRiders.Clone(),Hands=Hands.Select(h=>new List<Card>(h)).ToArray(),Hidden=new List<Secret>(Hidden),Random=random};}
+  Snapshot Capture(){return new Snapshot{Power=(int[,])Power.Clone(),Zero=(int[,])Zero.Clone(),Pierce=(bool[,])Pierce.Clone(),Rungs=(int[])Rungs.Clone(),Owners=(int[])RungOwners.Clone(),Riders=(int[])RungRiders.Clone(),Hands=Hands.Select(h=>new List<Card>(h)).ToArray(),Hidden=new List<Secret>(Hidden),Random=random};}
   public bool CanUndo {get{return Phase<2&&Winner==-1&&history.Count>0;}}
   public int UndoSteps {get{return history.Count;}}
-  public bool Undo(){if(!CanUndo)return false;var snapshot=history[history.Count-1];history.RemoveAt(history.Count-1);Power=(int[,])snapshot.Power.Clone();Pierce=(bool[,])snapshot.Pierce.Clone();Rungs=(int[])snapshot.Rungs.Clone();RungOwners=(int[])snapshot.Owners.Clone();RungRiders=(int[])snapshot.Riders.Clone();Hands=snapshot.Hands.Select(h=>new List<Card>(h)).ToArray();Hidden=new List<Secret>(snapshot.Hidden);random=snapshot.Random;return true;}
+  public bool Undo(){if(!CanUndo)return false;var snapshot=history[history.Count-1];history.RemoveAt(history.Count-1);Power=(int[,])snapshot.Power.Clone();Zero=(int[,])snapshot.Zero.Clone();Pierce=(bool[,])snapshot.Pierce.Clone();Rungs=(int[])snapshot.Rungs.Clone();RungOwners=(int[])snapshot.Owners.Clone();RungRiders=(int[])snapshot.Riders.Clone();Hands=snapshot.Hands.Select(h=>new List<Card>(h)).ToArray();Hidden=new List<Secret>(snapshot.Hidden);random=snapshot.Random;return true;}
   public bool CanPlay(int owner,int index,int target){
    if(Winner!=-1||Phase>=2||owner!=Actor||index<0||index>=Hands[owner].Count)return false;
    Card c=Hands[owner][index];
@@ -65,23 +66,24 @@ namespace Breach {
    else {Draw(owner,2);history.Clear();}return true;
   }
   public void EndAction(){if(Winner!=-1||Phase>=2)return;Phase++;DrawUsed=false;if(Phase==1)SaveAction();}
-  public Packet Route(int owner,int start){var p=new Packet{Owner=owner,Start=start,Power=Power[owner,start],Initial=Power[owner,start],Pierce=Pierce[owner,start]};int lane=start;
+  public Packet Route(int owner,int start){var p=new Packet{Owner=owner,Start=start,Power=Power[owner,start],Initial=Power[owner,start],Pierce=Pierce[owner,start],Zero=Math.Min(Zero[owner,start],Power[owner,start])};int lane=start;
    p.Cells.Add(new Cell(owner==0?3:-1,lane));
    for(int k=0;k<3;k++){int row=owner==0?2-k:k;p.Cells.Add(new Cell(row,lane));int edge=Rungs[row];if(edge>=0&&(RungRiders[row]<0||RungRiders[row]==owner)&&(lane==edge||lane==edge+1)){lane=lane==edge?edge+1:edge;p.Cells.Add(new Cell(row,lane));}}
    p.Cells.Add(new Cell(owner==0?-1:3,lane));p.End=lane;return p;
   }
   public bool Touch(Packet a,Packet b){return a.Cells.Any(c=>b.Cells.Any(d=>c.Row==d.Row&&c.Lane==d.Lane));}
   public Resolution Resolve(){var r=new Resolution{Before=(int[,])Health.Clone()};
-   foreach(var s in Hidden){r.Revealed.Add(s);r.Events.Add((s.Owner==0?"나":"상대")+" · "+Cards.Names[(int)s.Card]+" 공개");if(s.Card==Card.ZeroDay){Power[s.Owner,s.Target]++;Pierce[s.Owner,s.Target]=true;}else if(s.Card==Card.Firewall)Walls[s.Target]=true;}Hidden.Clear();
+   foreach(var s in Hidden){r.Revealed.Add(s);r.Events.Add((s.Owner==0?"나":"상대")+" · "+Cards.Names[(int)s.Card]+" 공개");if(s.Card==Card.ZeroDay){Power[s.Owner,s.Target]++;Zero[s.Owner,s.Target]++;Pierce[s.Owner,s.Target]=true;}else if(s.Card==Card.Firewall)Walls[s.Target]=true;}Hidden.Clear();
    for(int p=0;p<2;p++)for(int c=0;c<3;c++)if(Power[p,c]>0){var shot=Route(p,c);if(shot.Cells.Any(cell=>Walls[cell.Lane])){shot.Blocked=true;shot.Power=0;r.Events.Add("방화벽 · 패킷 소멸");}r.Packets.Add(shot);}
    foreach(var a in r.Packets.Where(p=>p.Owner==0))foreach(var b in r.Packets.Where(p=>p.Owner==1)){if(a.Power<=0||b.Power<=0||!Touch(a,b))continue;
-    if(a.Pierce&&!b.Pierce){b.Power=0;r.Events.Add("제로데이 · 상대 패킷 관통");}
-    else if(b.Pierce&&!a.Pierce){a.Power=0;r.Events.Add("제로데이 · 내 패킷 관통");}
-    else {int n=Math.Min(a.Power,b.Power);a.Power-=n;b.Power-=n;r.Events.Add("공격 상쇄 · "+n);}}
+    // 일반 몫(Power-Zero)끼리만 작은 쪽만큼 깎인다. 제로데이 몫은 부딪히지 않고 지나가 착탄(방화벽에는 위에서 이미 막힘)
+    int na=a.Power-a.Zero,nb=b.Power-b.Zero;
+    if(na>0&&nb>0){int n=Math.Min(na,nb);a.Power-=n;b.Power-=n;r.Events.Add("공격 상쇄 · "+n);}
+    else r.Events.Add("제로데이 · 통과");}
    // All impacts are adjudicated before victory, so neither side wins by iteration order.
    var damage=new int[2,3];foreach(var p in r.Packets){if(p.Power<=0)continue;int target=1-p.Owner;AccumulateHit(target,p.End,p.Power,r,damage);}
    for(int owner=0;owner<2;owner++)for(int channel=0;channel<3;channel++)Health[owner,channel]=Math.Max(0,r.Before[owner,channel]-damage[owner,channel]);
-   Array.Clear(Power,0,Power.Length);Array.Clear(Pierce,0,Pierce.Length);
+   Array.Clear(Power,0,Power.Length);Array.Clear(Zero,0,Zero.Length);Array.Clear(Pierce,0,Pierce.Length);
    bool mine=Alive(0)>0,theirs=Alive(1)>0;Winner=!mine&&!theirs?-2:!theirs?0:!mine?1:-1;Phase=2;return r;
   }
   void AccumulateHit(int owner,int channel,int amount,Resolution r,int[,] damage){if(r.Before[owner,channel]<=0)return;int over=Math.Max(0,amount-r.Before[owner,channel]);damage[owner,channel]+=amount;r.Events.Add((owner==0?"내":"상대")+" 서버 "+(channel+1)+" · 피해 "+amount);int splash=over/2;if(splash>0){if(channel>0)damage[owner,channel-1]+=splash;if(channel<2)damage[owner,channel+1]+=splash;}}
@@ -92,7 +94,7 @@ namespace Breach {
   // collision, piercing, firewall and splash rules as play, without touching RNG.
   Battle BotView(){
    var b=new Battle(1,Attacker){Phase=Phase,Round=Round,Winner=Winner};
-   b.Health=(int[,])Health.Clone();b.Power=(int[,])Power.Clone();b.Pierce=(bool[,])Pierce.Clone();b.Walls=(bool[])Walls.Clone();
+   b.Health=(int[,])Health.Clone();b.Power=(int[,])Power.Clone();b.Zero=(int[,])Zero.Clone();b.Pierce=(bool[,])Pierce.Clone();b.Walls=(bool[])Walls.Clone();
    b.Rungs=(int[])Rungs.Clone();b.RungOwners=(int[])RungOwners.Clone();b.RungRiders=(int[])RungRiders.Clone();
    b.Hands[0].Clear();b.Hands[1]=new List<Card>(Hands[1]);
    b.Hidden=new List<Secret>(Hidden);return b;
