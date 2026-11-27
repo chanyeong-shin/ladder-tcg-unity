@@ -14,18 +14,20 @@ namespace Breach.UI {
    var held=controller.hand.GetComponentsInChildren<CardView>().First(v=>v.index==0);
    var drag=new PointerEventData(EventSystem.current){position=RectTransformUtility.WorldToScreenPoint(null,held.transform.TransformPoint(new Vector3(50,-50,0)))};
    held.OnBeginDrag(drag);drag.position=RectTransformUtility.WorldToScreenPoint(null,controller.stage.TransformPoint(new Vector3(702,-400,0)));held.OnDrag(drag);
-   if(held.GetComponent<CanvasGroup>().alpha!=0){Fail("Card remains visible over valid rail");yield break;}
-   drag.position=RectTransformUtility.WorldToScreenPoint(null,controller.stage.TransformPoint(new Vector3(830,-400,0)));held.OnDrag(drag);
-   if(held.GetComponent<CanvasGroup>().alpha!=1){Fail("Card did not reappear away from rail");yield break;}
+   // week 12 item 8 (08_drag.js "small"): over the board the card is .6x at 40% opacity (it used to hide over a valid rail)
+   yield return new WaitForSecondsRealtime(.3f);
+   if(Mathf.Abs(held.GetComponent<CanvasGroup>().alpha-.4f)>.01f||Mathf.Abs(held.transform.localScale.x-.6f)>.01f){Fail("Card over the board is not .6x / 40%: "+held.GetComponent<CanvasGroup>().alpha+" "+held.transform.localScale.x);yield break;}
+   drag.position=RectTransformUtility.WorldToScreenPoint(null,controller.stage.TransformPoint(new Vector3(1500,-400,0)));held.OnDrag(drag);yield return new WaitForSecondsRealtime(.3f);
+   if(held.GetComponent<CanvasGroup>().alpha!=1){Fail("Card did not return to full opacity off the board");yield break;}
    held.OnEndDrag(drag);while(!controller.CanInput)yield return null;if(controller.State.Hands[0].Count!=2){Fail("Off-rail drop consumed card");yield break;}
    controller.Select(0);yield return new WaitForSeconds(.2f);
    if(controller.laneTargets.Any(b=>b.targetGraphic.color.a!=0)||controller.rungTargets.Any(b=>b.targetGraphic.color.a!=0)){Fail("Visible hit boxes");yield break;}
    yield return Shot("01-targets");controller.servers.First(v=>v.owner==0&&v.channel==0).OnPointerClick(new PointerEventData(EventSystem.current){button=PointerEventData.InputButton.Left});
    yield return Await("dock",.1f);var card=BattleController.Find(controller.fx,"사용 카드") as RectTransform;Rect dock=CardTransferFx.DockRect;
    if(!card||Vector2.Distance(card.anchoredPosition,new Vector2(dock.x,-dock.y))>.1f||Vector2.Distance(card.sizeDelta,dock.size)>.1f){Fail("Dock placement mismatch");yield break;}
-   yield return Shot("02-docked");yield return Await("fragment",.2f);yield return Shot("03-fragments");yield return Await("fragment",.65f);yield return Shot("04-circuits");yield return Await("absorb-card",.4f);yield return Shot("04b-card-absorb");yield return Await("absorb",.25f);yield return Shot("05-absorb");yield return Await("applied",.1f);yield return Shot("06-loaded");yield return Await("applied",.95f);yield return Shot("06b-loaded-glow");while(!controller.CanInput)yield return null;
+   yield return Shot("02-docked");yield return Await("fragment",.2f);yield return Shot("03-fragments");yield return Await("fragment",.65f);yield return Shot("04-circuits");yield return Await("absorb-card",.4f);yield return Shot("04b-card-absorb");yield return Await("absorb",.25f);yield return Shot("05-absorb");yield return Await("applied",.1f);yield return Shot("06-loaded");yield return Await("applied",.95f);yield return Shot("06b-loaded-glow");while(!controller.Settled)yield return null; // week 12: input opens at scan end, effects finish behind
    yield return null;if(controller.fx.childCount!=0){Fail("Effects did not clean up");yield break;}
-   controller.Select(0);yield return new WaitForSeconds(.2f);yield return Shot("07-rung-targets");controller.Use(0,true);controller.PickBridge(Battle.Both);yield return Await("applied",.1f);yield return Shot("08-connected");yield return Await("applied",.95f);yield return Shot("08b-connected-glow");while(!controller.CanInput)yield return null;
+   controller.Select(0);yield return new WaitForSeconds(.2f);yield return Shot("07-rung-targets");controller.Use(0,true);controller.PickBridge(Battle.Both);yield return Await("applied",.1f);yield return Shot("08-connected");yield return Await("applied",.95f);yield return Shot("08b-connected-glow");while(!controller.Settled)yield return null;
    var pointer=new PointerEventData(EventSystem.current);var button=controller.endButton.GetComponent<ButtonFeedback>();var before=((RectTransform)button.transform).anchoredPosition;button.OnPointerEnter(pointer);yield return new WaitForSeconds(.16f);yield return Shot("09-button-hover");if(((RectTransform)button.transform).anchoredPosition!=before){Fail("Button moved on hover");yield break;}button.OnPointerExit(pointer);
    controller.endButton.onClick.Invoke();yield return Await("turn",.3f);yield return Shot("10-turn");controller.animationSpeed=4;while(!controller.CanInput&&controller.State.Winner==-1)yield return null;
 controller.State.Hands[0].Clear();for(int i=0;i<5;i++)controller.State.Hands[0].Add(Card.Inject);controller.Render();yield return null;

@@ -53,6 +53,16 @@ class Program {
  b=Empty();b.Attacker=1;b.Hands[1].Add(Card.Inject);b.Hands[1].Add(Card.Inject);b.Hands[1].Add(Card.Buffer);
  for(int g=0;g<6&&b.ChooseBot(out bi,out bt);g++)b.Play(1,bi,bt);
  Check(Math.Max(b.Power[1,0],Math.Max(b.Power[1,1],b.Power[1,2]))>=2,"attacking bot stacks injects on one channel");
+ // rules v1.2 (user 11-26): BUFFER + OVERFLOW together once per own action turn
+ b=Empty();b.Hands[0].Add(Card.Buffer);b.Hands[0].Add(Card.Overflow);b.SaveAction();Check(b.Play(0,0,0)&&b.DrawUsed,"first draw card of the turn plays");
+ int ov=b.Hands[0].IndexOf(Card.Overflow);Check(ov>=0&&!b.CanPlay(0,ov,0)&&!b.Play(0,ov,0),"second draw card in the same action turn is refused");
+ b.Hands[0].Add(Card.Inject);Check(b.Play(0,b.Hands[0].Count-1,0),"other cards still play after the turn's draw");
+ b.EndAction();b.Hands[1].Add(Card.Buffer);Check(b.Play(1,b.Hands[1].Count-1,0),"defender's own draw is separate from the attacker's");
+ b.Hands[1].Add(Card.Overflow);Check(!b.CanPlay(1,b.Hands[1].Count-1,0),"defender is also limited to one draw card");
+ b.Resolve();b.NextRound();int nb=b.Hands[b.Actor].IndexOf(Card.Buffer);if(nb<0){b.Hands[b.Actor].Add(Card.Buffer);nb=b.Hands[b.Actor].Count-1;}Check(!b.DrawUsed&&b.CanPlay(b.Actor,nb,0),"a new action turn allows a draw card again");
+ b=Empty();b.Attacker=1;b.Hands[1].Add(Card.Buffer);b.Hands[1].Add(Card.Overflow);int draws=0;
+ for(int g=0;g<6&&b.ChooseBot(out bi,out bt);g++){if(Battle.IsDraw(b.Hands[1][bi]))draws++;b.Play(1,bi,bt);}
+ Check(draws==1,"bot plays at most one draw card per action turn");
  Console.WriteLine("TOTAL "+count);
  }
 }

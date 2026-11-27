@@ -27,11 +27,18 @@ namespace Breach {
   public List<Card>[] Hands={new List<Card>(),new List<Card>()};
   public List<Secret> Hidden=new List<Secret>();
   public int Round=1,Attacker,Phase,Winner=-1;public int Actor {get{return Phase==0?Attacker:1-Attacker;}}
+  // Rules v1.2 (user 11-26: "드로우 관련 카드는 한턴에 한번만 쓸수 있음.(드로우 관련 카드는 op이기 때문)"): BUFFER and OVERFLOW together,
+  // once per own action turn (attack turn and defense turn each). Reset whenever the action turn changes.
+  public bool DrawUsed;
+  public static bool IsDraw(Card c){return c==Card.Buffer||c==Card.Overflow;}
   uint random;readonly List<Snapshot> history=new List<Snapshot>();
   sealed class Snapshot {public int[,] Power;public bool[,] Pierce;public int[] Rungs,Owners,Riders;public List<Card>[] Hands;public List<Secret> Hidden;public uint Random;}
   public Battle(uint seed,int attacker=-1){random=seed==0?1:seed;Attacker=attacker<0?Next(2):attacker;for(int p=0;p<2;p++){for(int c=0;c<3;c++)Health[p,c]=1;Draw(p,3);Draw(p,1);}SaveAction();}
   public int Next(int max){random^=random<<13;random^=random>>17;random^=random<<5;return (int)(random%(uint)max);}
-  public void Draw(int player,int count){int[] weights={10,5,3,1,1,1};for(int i=0;i<count&&Hands[player].Count<5;i++){int r=Next(21);for(int c=0;c<6;c++){r-=weights[c];if(r<0){Hands[player].Add((Card)c);break;}}}}
+  // Draw record (week 12 deck view, read only for the rules): every card that actually entered each hand, oldest first.
+  public readonly List<Card>[] Drawn={new List<Card>(),new List<Card>()};
+  public static readonly int[] Weights={10,5,3,1,1,1};public const int WeightSum=21;
+  public void Draw(int player,int count){int[] weights=Weights;for(int i=0;i<count&&Hands[player].Count<5;i++){int r=Next(21);for(int c=0;c<6;c++){r-=weights[c];if(r<0){Hands[player].Add((Card)c);Drawn[player].Add((Card)c);break;}}}}
   // Turn start: nothing before this point can be undone. Each Play pushes one step;
   // a draw reveals new cards, so it locks itself and every earlier step.
   public void SaveAction(){history.Clear();}
@@ -45,9 +52,11 @@ namespace Breach {
    if(c==Card.Inject||c==Card.ZeroDay)return target>=0&&target<3&&Health[owner,target]>0;
    if(c==Card.Firewall)return target>=0&&target<3;
    if(c==Card.Reroute){if(target<0||target>=18)return false;int slot=Slot(target);if(Rungs[slot/2]==-1)return true;return Rungs[slot/2]==slot%2&&Color(target)==0;}
+   if(IsDraw(c))return !DrawUsed;
    return true;
   }
   public bool Play(int owner,int index,int target){if(!CanPlay(owner,index,target))return false;history.Add(Capture());Card c=Hands[owner][index];Hands[owner].RemoveAt(index);
+   if(IsDraw(c))DrawUsed=true; // a draw clears history below, so undo can never give the turn's draw back
    // Draw cards draw at once (OVERFLOW stays face down until resolve, but its draw is not deferred).
    if(c==Card.Overflow){Hidden.Add(new Secret(owner,c,target));Draw(owner,4);history.Clear();return true;}
    if(Cards.Enhanced(c))Hidden.Add(new Secret(owner,c,target));
@@ -55,7 +64,7 @@ namespace Breach {
    else if(c==Card.Reroute){int slot=Slot(target),row=slot/2,color=Color(target);if(Rungs[row]!=-1)LastRemovedRider=RungRiders[row];Rungs[row]=Rungs[row]==-1?slot%2:-1;RungOwners[row]=Rungs[row]<0?-1:owner;RungRiders[row]=Rungs[row]<0?-1:color==Mine?owner:color==Theirs?1-owner:-1;}
    else {Draw(owner,2);history.Clear();}return true;
   }
-  public void EndAction(){if(Winner!=-1||Phase>=2)return;Phase++;if(Phase==1)SaveAction();}
+  public void EndAction(){if(Winner!=-1||Phase>=2)return;Phase++;DrawUsed=false;if(Phase==1)SaveAction();}
   public Packet Route(int owner,int start){var p=new Packet{Owner=owner,Start=start,Power=Power[owner,start],Initial=Power[owner,start],Pierce=Pierce[owner,start]};int lane=start;
    p.Cells.Add(new Cell(owner==0?3:-1,lane));
    for(int k=0;k<3;k++){int row=owner==0?2-k:k;p.Cells.Add(new Cell(row,lane));int edge=Rungs[row];if(edge>=0&&(RungRiders[row]<0||RungRiders[row]==owner)&&(lane==edge||lane==edge+1)){lane=lane==edge?edge+1:edge;p.Cells.Add(new Cell(row,lane));}}
@@ -77,7 +86,7 @@ namespace Breach {
   }
   void AccumulateHit(int owner,int channel,int amount,Resolution r,int[,] damage){if(r.Before[owner,channel]<=0)return;int over=Math.Max(0,amount-r.Before[owner,channel]);damage[owner,channel]+=amount;r.Events.Add((owner==0?"내":"상대")+" 서버 "+(channel+1)+" · 피해 "+amount);int splash=over/2;if(splash>0){if(channel>0)damage[owner,channel-1]+=splash;if(channel<2)damage[owner,channel+1]+=splash;}}
   public int Alive(int player){int n=0;for(int c=0;c<3;c++)if(Health[player,c]>0)n++;return n;}
-  public void NextRound(){if(Winner!=-1)return;if(Phase!=2)throw new InvalidOperationException("Resolve before next round");Round++;Attacker=1-Attacker;Phase=0;Array.Clear(Walls,0,3);for(int p=0;p<2;p++)Draw(p,1+3-Alive(p));SaveAction();}
+  public void NextRound(){if(Winner!=-1)return;if(Phase!=2)throw new InvalidOperationException("Resolve before next round");Round++;Attacker=1-Attacker;Phase=0;DrawUsed=false;Array.Clear(Walls,0,3);for(int p=0;p<2;p++)Draw(p,1+3-Alive(p));SaveAction();}
   // Evaluate only the public board. Since v1.1 (user 11-22) every placed card is public, including the
   // opponent's security cards; the opponent's hand is still absent. Resolving these copies uses the same
   // collision, piercing, firewall and splash rules as play, without touching RNG.

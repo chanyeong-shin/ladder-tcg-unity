@@ -19,7 +19,8 @@ namespace Breach.UI
         // Same deterministic noise as the HTML: the same time gives the same shape (rewind, skip).
         public static float Rnd(float a,float b=0,float c=0){double x=System.Math.Sin(a*127.1+b*311.7+c*74.7)*43758.5453;return (float)(x-System.Math.Floor(x));}
         static int Round(float v) => Mathf.FloorToInt(v+.5f);
-        static float SeamX(float y) => 790-300*y/720;
+        static float SeamX(float y) => 790-y/2.4f; // same line as the clip test x + y/2.4 = 790 (300/720 = 1/2.4)
+        const float LineOffset=9, Inset=LineOffset+2.5f; // seam line distance from the field seam; traces stop 1 px inside their line
 
         void Poly(VertexHelper vh,Vector2[] p,Color[] colors)
         {
@@ -99,7 +100,7 @@ namespace Breach.UI
                 float flick=g>0?.78f+.22f*Rnd(tick,99):1;
                 for(int j=0;j<Bands;j++){
                     float y0=j*BandHeight,y1=y0+BandHeight,sx=SeamX((y0+y1)/2);
-                    float lag=Rnd(j,7)*.22f,pj=Clamp((p-lag)/(1-lag*.6f));
+                    float lag=Rnd(j,7)*.22f,pj=Clamp((p-lag)/(1-lag)); // 11-27: was /(1-lag*.6) which never reached 1 at p=1, leaving stepped black gaps at the seam
                     float jit=(Rnd(j,tick,1)-.5f)*2*amp,jit2=(Rnd(j,tick,2)-.5f)*2*amp;
                     float cR=Mathf.Max(0,Mathf.Min(sx,sx*EaseIO(pj)+jit)),rL=Mathf.Min(1280,Mathf.Max(sx,1280-(1280-sx)*EaseIO(pj)+jit2));
                     float sxa=SeamX(y0),sxb=SeamX(y1);
@@ -117,18 +118,23 @@ namespace Breach.UI
                 Color ink=side==0?cyan:red;var stroke=ink;stroke.a=.24f;
                 for(int k=1;k<4&&remaining>0;k++){
                     Vector2 a=pts[k-1],b=Vector2.Lerp(a,pts[k],Mathf.Clamp01(remaining/Vector2.Distance(a,pts[k])));remaining-=Vector2.Distance(a,pts[k]);head=b;
-                    float da=a.x+a.y/2.4f-790,db=b.x+b.y/2.4f-790;bool va=side==0?da<=0:da>=0,vb=side==0?db<=0:db>=0;
+                    // 11-27 fix (user: title circuits slightly leave their area): clip each trace to the inside of its own seam line
+                    // (seam lines are drawn parallel to SeamX at -/+LineOffset), not to the field boundary itself.
+                    float clip=side==0?Inset:-Inset;
+                    float da=a.x+a.y/2.4f-790+clip,db=b.x+b.y/2.4f-790+clip;bool va=side==0?da<=0:da>=0,vb=side==0?db<=0:db>=0;
                     if(!va&&!vb)continue;if(va!=vb){var cross=Vector2.Lerp(a,b,da/(da-db));if(va)b=cross;else a=cross;}
                     a.x=Mathf.Clamp(a.x,0,1280);b.x=Mathf.Clamp(b.x,0,1280);a.y=Mathf.Clamp(a.y,0,720);b.y=Mathf.Clamp(b.y,0,720);
                     Line(vh,a,b,i%4==0?2:1,stroke);
                 }
-                float headSide=head.x+head.y/2.4f-790;
+                float headSide=head.x+head.y/2.4f-790+(side==0?Inset+3:-Inset-3);
                 if(side==0?headSide<=0:headSide>=0){var dot=ink;dot.a=pr<1?.9f:.45f;var ring=new Vector2[16];var colors=new Color[16];for(int n=0;n<16;n++){float angle=n*Mathf.PI/8;ring[n]=head+new Vector2(Mathf.Cos(angle),Mathf.Sin(angle))*3;colors[n]=dot;}Poly(vh,ring,colors);}
             }
             // Seam lines light up when the fields meet.
             float seam=Ease((t-CoverEnd)/.25f);
-            Line(vh,new Vector2(782,-10),new Vector2(482,730),3,new Color(cyan.r,cyan.g,cyan.b,seam));
-            Line(vh,new Vector2(800,-10),new Vector2(500,730),3,new Color(red.r,red.g,red.b,seam));
+            // 11-27: the old lines (782,-10)-(482,730) and (800,-10)-(500,730) were not parallel to the field seam (790 - y/2.4),
+            // so near the bottom the red field and red traces reached past the red line. Draw them parallel at -/+LineOffset.
+            Line(vh,new Vector2(SeamX(-10)-LineOffset,-10),new Vector2(SeamX(730)-LineOffset,730),3,new Color(cyan.r,cyan.g,cyan.b,seam));
+            Line(vh,new Vector2(SeamX(-10)+LineOffset,-10),new Vector2(SeamX(730)+LineOffset,730),3,new Color(red.r,red.g,red.b,seam));
             // Inbound signals accelerate from both edges and vanish at contact.
             if(t<ContactTime){
                 float acc=Mathf.Pow(Clamp(t/ContactTime),3),cx=-50+698*acc,rx=1330-682*acc;

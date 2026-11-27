@@ -42,6 +42,34 @@ namespace Breach.UI {
   // Signal mode: heads run along board-bound traces only; time in seconds, -1 = off.
   public Color Ink = new Color(.22f, .851f, 1);
   Color Mix(float white, float a) { var c = Color.Lerp(Ink, Color.white, white); c.a = a; return c; }
+  // Week 12 item 3 (03_boardcircuit.js "flow"): when BandY is set, only the part inside a BandHeight tall band is drawn and its
+  // alpha falls linearly from 1 at BandY to 0 at both band edges (the HTML masks the band with a 0-1-0 vertical gradient).
+  public float BandY = float.NaN, BandHeight = 180;
+  float Weight(float y) { return Mathf.Clamp01(1 - Mathf.Abs(y - BandY) / (BandHeight / 2)); }
+  Color W(Color c, float y) { return new Color(c.r, c.g, c.b, c.a * Weight(y)); }
+  // a segment cut at the band's top, middle and bottom, each piece with per-end alpha (exact, the weight is linear in y on each piece)
+  void BandQuad(VertexHelper vh, Vector2 a, Vector2 b, float width, Color c) {
+   float h = BandHeight / 2; var cuts = new System.Collections.Generic.List<float> { 0, 1 };
+   foreach (float y in new[] { BandY - h, BandY, BandY + h }) if (Mathf.Abs(b.y - a.y) > .0001f) { float k = (y - a.y) / (b.y - a.y); if (k > 0 && k < 1) cuts.Add(k); }
+   cuts.Sort();
+   for (int i = 1; i < cuts.Count; i++) {
+    Vector2 p = Vector2.Lerp(a, b, cuts[i - 1]), q = Vector2.Lerp(a, b, cuts[i]); float mid = (p.y + q.y) / 2; if (Weight(mid) <= 0 && Weight(p.y) <= 0 && Weight(q.y) <= 0) continue;
+    var d = q - p; if (d.sqrMagnitude < .0001f) continue; var n = new Vector2(-d.y, d.x).normalized * width / 2; int s = vh.currentVertCount; Color cp = W(c, p.y), cq = W(c, q.y);
+    vh.AddVert(new Vector3(p.x + n.x, -(p.y + n.y)), cp, Vector2.zero); vh.AddVert(new Vector3(q.x + n.x, -(q.y + n.y)), cq, Vector2.zero);
+    vh.AddVert(new Vector3(q.x - n.x, -(q.y - n.y)), cq, Vector2.zero); vh.AddVert(new Vector3(p.x - n.x, -(p.y - n.y)), cp, Vector2.zero);
+    vh.AddTriangle(s, s + 1, s + 2); vh.AddTriangle(s, s + 2, s + 3);
+   }
+  }
+  void BandPartial(VertexHelper vh, CircuitData.Trace t, float to, float width, Color c) {
+   float acc = 0; for (int i = 1; i < t.Points.Length; i++) { var a = t.Points[i - 1]; var b = t.Points[i]; float l = Vector2.Distance(a, b); float s1 = Mathf.Min(to, acc + l); if (s1 > acc && l > 0) BandQuad(vh, a, Vector2.Lerp(a, b, (s1 - acc) / l), width, c); acc += l; if (acc >= to) break; }
+  }
+  void BandMesh(VertexHelper vh, Color ink, Color halo) {
+   for (int i = 0; i < Data.Traces.Count; i++) { var t = Data.Traces[i]; float to = t.Length * Ease3(Reveal * 1.25f - TitleBBackdrop.Rnd(i) * .25f); if (Glow > 0) BandPartial(vh, t, to, t.Width + 3, halo); BandPartial(vh, t, to, t.Width, ink); }
+   float tip = Reveal >= 1 ? 1 : Mathf.Clamp01(Reveal * 1.4f - .3f); if (tip <= 0) return; var padInk = new Color(ink.r, ink.g, ink.b, ink.a * tip);
+   foreach (var p in Data.Pads) { float w = Weight(p.center.y); if (w > 0) Box(vh, p, new Color(padInk.r, padInk.g, padInk.b, padInk.a * w)); }
+   foreach (var v in Data.Vias) for (int i = 0; i < 12; i++) { float a0 = i * Mathf.PI / 6, a1 = (i + 1) * Mathf.PI / 6; var c = new Vector2(v.x, v.y); BandQuad(vh, c + new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * v.z, c + new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * v.z, 1.3f, padInk); }
+   foreach (var r in Data.Chips) { BandQuad(vh, new Vector2(r.xMin, r.yMin), new Vector2(r.xMax, r.yMin), 1.6f, padInk); BandQuad(vh, new Vector2(r.xMax, r.yMin), new Vector2(r.xMax, r.yMax), 1.6f, padInk); BandQuad(vh, new Vector2(r.xMax, r.yMax), new Vector2(r.xMin, r.yMax), 1.6f, padInk); BandQuad(vh, new Vector2(r.xMin, r.yMax), new Vector2(r.xMin, r.yMin), 1.6f, padInk); }
+  }
   public bool Signals; public float SignalTime = -1; public const float SignalSpan = .75f, SignalTail = 130, SignalLength = 1.25f;
   public static float Delay(int index) { return .45f * ((index * 37) % 11) / 10f; }
   static float Ease3(float v) { v = Mathf.Clamp01(v); return 1 - (1 - v) * (1 - v) * (1 - v); }
@@ -76,6 +104,7 @@ namespace Breach.UI {
     return;
    }
    if (Reveal <= 0) return;
+   if (!float.IsNaN(BandY)) { BandMesh(vh, ink, halo); return; }
    for (int i = 0; i < Data.Traces.Count; i++) { var t = Data.Traces[i]; float to = t.Length * Ease3(Reveal * 1.25f - TitleBBackdrop.Rnd(i) * .25f); if (Glow > 0) Partial(vh, t, 0, to, t.Width + 3, halo); Partial(vh, t, 0, to, t.Width, ink); }
    float tip = Reveal >= 1 ? 1 : Mathf.Clamp01(Reveal * 1.4f - .3f); if (tip <= 0) return; var padInk = new Color(ink.r, ink.g, ink.b, ink.a * tip);
    foreach (var p in Data.Pads) Box(vh, p, padInk);

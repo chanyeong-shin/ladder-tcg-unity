@@ -37,13 +37,15 @@ namespace Breach.UI {
     yield return Await(()=>done,"return");if(failed)yield break;yield return null;
     if(c.presentation.CameraZoom!=1||c.presentation.CameraOffset!=Vector2.zero||((RectTransform)c.endButton.transform).anchoredPosition!=button||c.hand.localScale!=hand){Fail("Camera or HUD did not restore");yield break;}
    }
+   // under heavy CPU load (other jobs at 90%) one frame could jump past the .6-1 window at speed 4: run the wall effect slowly, then restore
+   float wallSpeed=c.feedback.speed;c.feedback.speed=.25f;
    bool wallDone=false;StartCoroutine(Run(c.feedback.Applied(Card.Firewall,0,1,true),()=>wallDone=true));
    yield return Await(()=>c.feedback.Phase=="applied"&&c.feedback.Progress>.08f,"wall open");if(failed)yield break;
    var wall=BattleController.Find(c.game.transform,"반도체 방화벽") as RectTransform;
-   if(!wall||((RectTransform)wall.GetChild(0)).anchoredPosition.x>=-15||wall.GetChild(2).gameObject.activeSelf){Fail("Firewall did not prepare open");yield break;}yield return Shot("firewall-open");
+   if(!wall||((RectTransform)wall.GetChild(0)).anchoredPosition.x>=-15||wall.GetChild(2).gameObject.activeSelf){Fail("Firewall did not prepare open");yield break;}/* the capture frame is slow under load; hold the effect clock so it cannot run past the lock */FxClock.Scale=0;yield return Shot("firewall-open");FxClock.Scale=1;
    yield return Await(()=>c.feedback.Phase=="applied"&&c.feedback.Progress>.6f,"wall close");if(failed)yield break;
-   if(Mathf.Abs(((RectTransform)wall.GetChild(0)).anchoredPosition.x)>.1f||!wall.GetChild(2).gameObject.activeSelf){Fail("Firewall did not lock");yield break;}yield return Shot("firewall-locked");yield return Await(()=>wallDone,"wall cleanup");if(failed)yield break;
-   bool absorbed=false;c.feedback.speed=1;StartCoroutine(Run(c.feedback.Play(Card.Inject,0,new Vector2(850,860),new Vector2(126,201.6f)),()=>absorbed=true));
+   if(Mathf.Abs(((RectTransform)wall.GetChild(0)).anchoredPosition.x)>.1f||!wall.GetChild(2).gameObject.activeSelf){Fail("Firewall did not lock");yield break;}yield return Shot("firewall-locked");yield return Await(()=>wallDone,"wall cleanup");if(failed)yield break;c.feedback.speed=wallSpeed;
+   bool absorbed=false;c.feedback.speed=1;StartCoroutine(Run(c.feedback.Play(Card.Buffer,0,new Vector2(850,860),new Vector2(126,201.6f)),()=>absorbed=true)); // week 12: inject/reroute use the route dot; draw cards keep the circuit comets
    yield return Await(()=>c.feedback.Phase=="absorb"&&c.feedback.Progress>.25f,"absorption");if(failed)yield break;
    var signal=c.game.GetComponentsInChildren<CircuitGraphic>(true).FirstOrDefault(x=>x.Signals);if(!signal||signal.SignalTime<0){Fail("Activation signals not running");yield break;}
    yield return Shot("activation-signals");yield return Await(()=>c.feedback.Phase=="absorb"&&c.feedback.Progress>.65f,"activation late");if(failed)yield break;yield return Shot("activation-pads");

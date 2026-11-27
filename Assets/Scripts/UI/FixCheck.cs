@@ -39,7 +39,9 @@ namespace Breach.UI
             // Color bridge B: an empty slot shows three dots; anything but a dot cancels the card.
             c.Use(2, true); yield return null; if (!c.BridgeOpen || c.CanInput) { Fail("Color bridge dots did not open"); yield break; }
             yield return Shot("01b-color-bridge-dots"); c.CancelBridge(); yield return null;
-            if (c.BridgeOpen || c.State.Hands[0].Count != 1 || c.State.Rungs.Any(r => r >= 0) || c.paths.childCount != 0) { Fail("Color bridge cancel left the card used"); yield break; }
+            // paths may hold the hover route preview ("공개 경로") when the real mouse cursor rests over a channel target of the window; only other leftovers count
+            int leftovers = c.paths.Cast<Transform>().Count(t => t.name != "공개 경로");
+            if (c.BridgeOpen || c.State.Hands[0].Count != 1 || c.State.Rungs.Any(r => r >= 0) || leftovers != 0) { Fail("Color bridge cancel left the card used (bridge " + c.BridgeOpen + ", hand " + c.State.Hands[0].Count + ", rungs " + string.Join(",", c.State.Rungs) + ", paths " + string.Join(",", c.paths.Cast<Transform>().Select(t => t.name)) + ")"); yield break; }
             c.Select(0); yield return new WaitForSecondsRealtime(.7f);
             var hold = c.GetComponent<CardHoldFx>(); if (!hold || !hold.Visible || hold.Amount < .99f) { Fail("Card hold dim/circuit not shown for a held card"); yield break; }
             yield return Shot("01c-card-hold-circuit");
@@ -51,10 +53,12 @@ namespace Breach.UI
 
             // 5/6. One action per undo; a draw locks itself and everything before it.
             Reset(0, 0); c.State.Hands[0].Add(Card.Inject); c.State.Hands[0].Add(Card.Reroute); c.State.Hands[0].Add(Card.Inject); c.State.SaveAction(); c.Render(); yield return null;
-            c.Select(0); c.Use(0, false); yield return Await(() => c.CanInput, "play 1"); if (failed) yield break;
+            c.Select(0); c.Use(0, false); yield return Await(() => c.CanInput, "play 1"); if (failed) yield break; // week 12: the next card may be placed while this one absorbs
             c.Select(0); c.Use(0, true); yield return null; if (!c.BridgeOpen) { Fail("Color bridge dots missing"); yield break; } c.PickBridge(Battle.Mine); yield return Await(() => c.CanInput, "play 2"); if (failed) yield break;
             if (c.State.RungRiders[0] != 0) { Fail("Blue dot did not make a mine-only rung"); yield break; }
             c.Select(0); c.Use(2, false); yield return Await(() => c.CanInput, "play 3"); if (failed) yield break;
+            if (c.undoButton.interactable && c.PendingEffects > 0) { Fail("Undo offered while a card effect is still running"); yield break; }
+            yield return Await(() => c.Settled, "plays settled"); if (failed) yield break;
             if (!c.undoButton.interactable) { Fail("Undo disabled after plays"); yield break; }
             c.undoButton.onClick.Invoke(); yield return null;
             if (c.State.Power[0, 2] != 0 || c.State.Rungs[0] != 0 || c.State.Power[0, 0] != 1 || c.State.Hands[0].Count != 1) { Fail("Undo did more than one step"); yield break; }
@@ -62,14 +66,14 @@ namespace Breach.UI
             c.undoButton.onClick.Invoke(); yield return null; if (c.State.Rungs[0] != -1 || c.State.Power[0, 0] != 1) { Fail("Second undo"); yield break; }
             c.undoButton.onClick.Invoke(); yield return null; if (c.State.Power[0, 0] != 0 || c.State.Hands[0].Count != 3 || c.undoButton.interactable) { Fail("Undo did not stop at turn start"); yield break; }
             Reset(0, 0); c.State.Hands[0].Add(Card.Inject); c.State.Hands[0].Add(Card.Buffer); c.State.SaveAction(); c.Render(); yield return null;
-            c.Select(0); c.Use(0, false); yield return Await(() => c.CanInput, "inject before draw"); if (failed) yield break;
-            c.Select(0); c.Use(0, false); yield return Await(() => c.CanInput, "buffer draw"); if (failed) yield break;
+            c.Select(0); c.Use(0, false); yield return Await(() => c.Settled, "inject before draw"); if (failed) yield break;
+            c.Select(0); c.Use(0, false); yield return Await(() => c.Settled, "buffer draw"); if (failed) yield break;
             if (c.State.Hands[0].Count != 2) { Fail("Buffer did not draw at once"); yield break; }
             if (c.undoButton.interactable) { Fail("Undo still offered after a draw"); yield break; }
             c.undoButton.onClick.Invoke(); yield return null; if (c.State.Hands[0].Count != 2 || c.State.Power[0, 0] != 1) { Fail("Draw was undone"); yield break; }
             yield return Shot("03-draw-locks-undo");
             Reset(0, 0); c.State.Hands[0].Add(Card.Overflow); c.State.SaveAction(); c.Render(); yield return null;
-            c.Select(0); c.Use(0, false); yield return Await(() => c.CanInput, "overflow"); if (failed) yield break;
+            c.Select(0); c.Use(0, false); yield return Await(() => c.Settled, "overflow"); if (failed) yield break;
             if (c.State.Hands[0].Count != 4 || c.State.Hidden.Count != 1 || c.undoButton.interactable) { Fail("Overflow did not draw at once or stayed undoable"); yield break; }
             passed.Add("undo one step at a time, stops at turn start, buffer/overflow draw at once and cannot be undone");
 
@@ -79,6 +83,8 @@ namespace Breach.UI
             yield return Await(() => c.feedback.Phase == "fragment", "fragment"); if (failed) yield break;
             c.SkipPresentation(); int frames = 0; while (!c.CanInput && frames < 30) { frames++; yield return null; }
             if (!c.CanInput) { Fail("Skip did not finish card transfer within 30 frames"); yield break; }
+            // week 12 item 5: the skip ends at the input point (scan end); the card's remaining effects then finish at normal speed
+            yield return Await(() => c.Settled, "card effects after skip"); if (failed) yield break;
             yield return null;
             if (c.State.Power[0, 1] != 1 || c.fx.childCount != 0 || c.feedback.Phase != "idle" || c.Skipping) { Fail("Card skip left half state"); yield break; }
             passed.Add("skip card transfer in " + frames + " frames, fx cleared");
@@ -130,7 +136,7 @@ namespace Breach.UI
         }
         void Reset(int attacker, int phase)
         {
-            var s = c.State; s.Attacker = attacker; s.Phase = phase; s.Winner = -1; s.Hidden.Clear(); Array.Clear(s.Power, 0, 6); Array.Clear(s.Walls, 0, 3); Array.Clear(s.Pierce, 0, 6);
+            var s = c.State; s.Attacker = attacker; s.Phase = phase; s.Winner = -1; s.DrawUsed = false; /* rules v1.2: a fixture starts a fresh action turn */ s.Hidden.Clear(); Array.Clear(s.Power, 0, 6); Array.Clear(s.Walls, 0, 3); Array.Clear(s.Pierce, 0, 6);
             s.Hands[0].Clear(); s.Hands[1].Clear(); for (int i = 0; i < 3; i++) { s.Health[0, i] = s.Health[1, i] = 1; s.Rungs[i] = -1; s.RungOwners[i] = -1; s.RungRiders[i] = -1; }
         }
         static Vector2 Screen(Vector3 world) { return RectTransformUtility.WorldToScreenPoint(null, world); }

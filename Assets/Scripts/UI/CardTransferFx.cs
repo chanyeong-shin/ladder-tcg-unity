@@ -14,6 +14,19 @@ namespace Breach.UI {
   public float speed=1;
   public string Phase {get;private set;}="idle";
   public float Progress {get;private set;}
+  // week 12 (계획/Unity_12주차_적용목록.md items 1, 4, 5)
+  public SocketFx socket;
+  // item 1: action-turn counter and this turn's activation effect (ActivateFx.Choose: never the previous turn's pick)
+  public int ActionTurn {get;private set;}=-1;
+  public int EffectPick {get;private set;}=ActivateFx.Packets;
+  // item 5: socket-to-board route of the last dot card (0 top, 1 middle, 2 bottom) and how many cards were placed this battle
+  public int LastRoute {get;private set;}=-1;
+  int plays; public int Plays {get{return plays;}}
+  // cards between their scan and their end keep the hold circuit on (two may overlap since item 5)
+  int holders;
+  public float EffectRate {get{return Mathf.Max(.1f,Rate);}}
+  public void ResetTurns(){ActionTurn=-1;EffectPick=ActivateFx.Packets;plays=0;holders=0;LastRoute=-1;if(socket)socket.ResetAll();}
+  public void ForcePick(int pick){EffectPick=pick;} // checks only
   public static readonly Rect Socket=new Rect(223,381,228,236);
   public static Rect DockRect {get {float h=Socket.height-16,w=h/1.6f;return new Rect(Socket.center.x-w/2,Socket.y+8,w,h);}}
   static readonly Vector2[][] Routes={
@@ -24,33 +37,31 @@ namespace Breach.UI {
   BattleController host;
   // While the controller is skipping, every phase below runs to its end in one frame.
   float Rate {get{if(!host)host=GetComponent<BattleController>();return host&&host.Skipping?BattleController.SkipSpeed:speed*(host?host.HoldFactor:1);}}
-  float Delta {get{return Time.deltaTime*Mathf.Max(.1f,Rate);}}
+  float Delta {get{return Time.deltaTime*Mathf.Max(.1f,Rate)*FxClock.Scale;}}
   static float Ease(float t){return t*t*(3-2*t);}
   RectTransform Root(string name){return Ui.Rect(name,layer,0,0,1920,1080);}
   void At(RectTransform r,Vector2 p){r.anchoredPosition=new Vector2(p.x,-p.y);}
   Image Picture(string name,Transform parent,Sprite sprite,Rect rect){var r=Ui.Rect(name,parent,rect.x,rect.y,rect.width,rect.height);var image=r.gameObject.AddComponent<Image>();image.sprite=sprite;image.raycastTarget=false;return image;}
-  public IEnumerator Play(Card card,int owner,Vector2 origin,Vector2 originSize){
-   Color color=owner==0?Ui.Cyan:Ui.Red;
+  // released: invoked when the scan ends (week 12 item 5, 11_queue.js "scan": the socket empties and the next card may be placed
+  // while this card's circuit, absorption, dot and result keep playing). target: the card's target (for the dot's destination).
+  public IEnumerator Play(Card card,int owner,Vector2 origin,Vector2 originSize,System.Action released=null,int target=-1){
+   Color color=owner==0?Ui.Cyan:Ui.Red;var token=new object();
+   // item 5: board cards (code injection, rerouting) become a dot that takes one of the three socket-to-board routes, chosen per card
+   // like the HTML: pickRoute = Math.floor(hash(cycle * 4 + i + 11) * 3) % 3 (CardTransferFx.Hash = the HTML's Math.imul hash)
+   bool dot=card==Card.Inject||card==Card.Reroute;int route=Mathf.FloorToInt(Hash(plays+11)*3)%3;plays++;if(dot)LastRoute=route;
    // user 11-22: "봇이 내는 카드 보고 싶음 ... 그냥 다 공개 하자" — the bot's cards show their face when placed
    Sprite sprite=cardImages[(int)card]; // v1.1: every placed card shows its face
    var root=Root("카드 사용 - 안착 분해 전송");Rect dock=DockRect;
    var chip=Picture("사용 카드",root,sprite,new Rect(origin,originSize));var rect=chip.rectTransform;
    Phase="move";
-   for(float t=0;t<1;t+=Delta/.35f){Progress=t;float e=Ease(t);At(rect,Vector2.Lerp(origin,dock.position,e));rect.sizeDelta=Vector2.Lerp(originSize,dock.size,e);yield return null;}
+   for(float t=0;t<1;t+=Delta/.35f){Progress=t;float e=Ease(t);At(rect,Vector2.Lerp(origin,dock.position,e));rect.sizeDelta=Vector2.Lerp(originSize,dock.size,e);if(socket)socket.Move(token,t);yield return null;}
    At(rect,dock.position);rect.sizeDelta=dock.size;
-   var clamp=Ui.Box("소켓 고정",root,dock.x-3,dock.y-3,dock.width+6,dock.height+6,color,false,2);
-   for(int side=0;side<2;side++)for(int pin=0;pin<12;pin++){
-    float edge=side==0?dock.x:dock.xMax,direction=side==0?-1:1,y=dock.y+25+pin*15;
-    Vector2 a=new Vector2(edge,y),b=a+new Vector2(direction*(7+pin%3*3),0),c=b+new Vector2(direction*5,(pin%2==0?1:-1)*5),d=c+new Vector2(direction*7,0);
-    Color faint=new Color(color.r,color.g,color.b,.2f);
-    Ui.Line("소켓 미세 회로",root,a,b,faint,.7f);Ui.Line("소켓 미세 회로 굴절",root,b,c,faint,.7f);Ui.Line("소켓 미세 회로 끝",root,c,d,faint,.7f);
-    Ui.Box("회로 접점",root,d.x-1,d.y-1,2,2,new Color(color.r,color.g,color.b,.3f),false,.6f,12);
-   }
-   Phase="dock";for(float t=0;t<1;t+=Delta/.25f){Progress=t;clamp.color=Color.Lerp(Color.white,color,t);yield return null;}
+   // item 4: the socket clamp turns white -> turn color and the gap fill turns from the circuit pattern to scanlines (SocketFx)
+   Phase="dock";for(float t=0;t<1;t+=Delta/.25f){Progress=t;if(socket)socket.Dock(token,t);yield return null;}if(socket)socket.Dock(token,1);
 
    // Scan (HTML tab 4 "스캔 → 회로선"): a light bar sweeps the docked card in 0.8 s and the part it has passed
    // becomes 7 circuit lines with a jog and an end pad. The circuit stays faintly on screen (2026-11-22 request).
-   var hold=GetComponent<CardHoldFx>();if(hold)hold.Show(hold.Visible);
+   var hold=GetComponent<CardHoldFx>();if(hold)hold.Show(hold.Visible);holders++;
    chip.type=Image.Type.Filled;chip.fillMethod=Image.FillMethod.Vertical;chip.fillOrigin=(int)Image.OriginVertical.Bottom;
    var barGlow=Ui.Box("스캔 빛 번짐",root,dock.x-16,dock.y-8,dock.width+32,16,new Color(.91f,.98f,1,.3f));
    var bar=Ui.Box("스캔 빛 막대",root,dock.x-8,dock.y-2,dock.width+16,4,new Color(.91f,.98f,1));
@@ -93,32 +104,66 @@ namespace Breach.UI {
    for(float t=0;t<1;t+=Delta/.8f){Progress=t;float y=dock.y+dock.height*t;chip.fillAmount=1-t;At(bar.rectTransform,new Vector2(dock.x-8,y-2));At(barGlow.rectTransform,new Vector2(dock.x-16,y-8));
     for(int i=0;i<seeds.Count;i++)seeds[i].pad.gameObject.SetActive(t>=seeds[i].at);Border(y);
     for(int i=0;i<traces.Count;i++){float since=(t-seeds[traces[i].seed].at)*.8f;Grow(i,since<=0?0:Ease(Mathf.Clamp01(since/.22f)));}
-    yield return null;}
+    if(socket)socket.Scan(token,t);yield return null;}
+   if(socket)socket.Scan(token,1);
+   // item 5: the scan is over: the card picture is gone, input and the socket open for the next card
+   released?.Invoke();
    chip.gameObject.SetActive(false);bar.gameObject.SetActive(false);barGlow.gameObject.SetActive(false);
-   for(float t=0;t<.22f;t+=Delta){for(int i=0;i<traces.Count;i++){float since=(1-seeds[traces[i].seed].at)*.8f+t;Grow(i,Ease(Mathf.Clamp01(since/.22f)));}yield return null;}
+   for(float t=0;t<.22f;t+=Delta){for(int i=0;i<traces.Count;i++){float since=(1-seeds[traces[i].seed].at)*.8f+t;Grow(i,Ease(Mathf.Clamp01(since/.22f)));}if(socket)socket.Hold(token);yield return null;}
    for(int i=0;i<traces.Count;i++)Grow(i,1);Border(dock.yMax+1);
    // Absorption: the traces pull back into their pads, the pads gather at the socket exit,
    // and three comets leave the exit along the socket-to-board routes.
-   var exit=Routes[1][0];var routeInk=new Color(color.r,color.g,color.b,.18f);
-   for(int lane=0;lane<3;lane++)for(int seg=1;seg<Routes[lane].Length;seg++)Ui.Line("소켓-판 회로",root,Routes[lane][seg-1],Routes[lane][seg],routeInk,lane==1?3:1.5f);
+   var exit=Routes[dot?route:1][0];var routeInk=new Color(color.r,color.g,color.b,.18f);var routeLines=new List<Shape>();
+   for(int r=0;r<3;r++)for(int seg=1;seg<Routes[r].Length;seg++)routeLines.Add(Ui.Line("소켓-판 회로",root,Routes[r][seg-1],Routes[r][seg],routeInk,r==1?3:1.5f));
+   Color ink=owner==0?new Color(56/255f,217/255f,1):EventFx.Enemy;var dotPaint=dot?FxPainter.Create("카드 점 - 소켓에서 판으로",root):null;
    var comets=new List<Shape>();for(int lane=0;lane<3;lane++)for(int part=0;part<10;part++)comets.Add(Ui.Box("소켓 혜성",root,0,0,1,1,Color.clear));
    Phase="absorb-card";
    for(float t=0;t<1;t+=Delta/.7f){Progress=t;float drain=Ease(Mathf.Clamp01(t/.4f)),slide=Ease(Mathf.InverseLerp(.3f,.6f,t));
     for(int i=0;i<traces.Count;i++)Grow(i,1-drain);
     foreach(var bs in borderSegs){Vector2 a0=Vector2.Lerp(bs.a,exit,slide),b0=Vector2.Lerp(bs.b,exit,slide),dv=b0-a0;foreach(var g in new[]{bs.glow,bs.line}){At(g.rectTransform,a0);g.rectTransform.sizeDelta=new Vector2(dv.magnitude,g.rectTransform.sizeDelta.y);var c=g.color;c.a=(g==bs.glow?.25f:1)*(1-Mathf.InverseLerp(.5f,.7f,t));g.color=c;}}
     for(int i=0;i<seeds.Count;i++){var pad=seeds[i].pad;var half=pad.rectTransform.sizeDelta/2;At(pad.rectTransform,Vector2.Lerp(seeds[i].p,exit+new Vector2(0,(i-1)*4),slide)-half);pad.rectTransform.localScale=Vector3.one*Mathf.Lerp(1,.4f,slide);pad.color=new Color(lineInk.r,lineInk.g,lineInk.b,1-Mathf.InverseLerp(.55f,.7f,t));}
+    if(dot){ // 11_queue.js: routes fade out over the last 15%, the dot runs the chosen route in the second half
+     foreach(var l in routeLines){var c=l.color;c.a=.18f*(1-Mathf.Clamp01((t-.85f)/.15f));l.color=c;}
+     float head=Mathf.Clamp01((t-.5f)/.5f);dotPaint.Begin();if(head>0&&head<1)Dot(dotPaint,Routes[route],head,1,ink);dotPaint.End();
+     if(socket)socket.Absorb(token,t);yield return null;continue;}
+    if(socket)socket.Absorb(token,t);
     int index=0;for(int lane=0;lane<3;lane++){float head=Mathf.InverseLerp(.5f+lane*.04f,1,t);
      for(int part=0;part<10;part++){var piece=comets[index++];float h1=head-part*.035f,h0=h1-.035f;bool visible=h1>0&&h0<1;piece.gameObject.SetActive(visible);if(!visible)continue;
       Vector2 pa=Along(Routes[lane],Mathf.Clamp01(h0)),pb=Along(Routes[lane],Mathf.Clamp01(h1)),dv=pb-pa;At(piece.rectTransform,pa);piece.rectTransform.pivot=new Vector2(0,.5f);piece.rectTransform.localRotation=Quaternion.Euler(0,0,-Mathf.Atan2(dv.y,dv.x)*Mathf.Rad2Deg);
       float f=1-part/10f;piece.rectTransform.sizeDelta=new Vector2(Mathf.Max(1,dv.magnitude),1.2f+1.6f*f);piece.color=part==0?new Color(.94f,1,1,1):new Color(.62f,.95f,1,.8f*f*f);}}
     yield return null;}
    // Activation: the circuit stays faint and comets run along it toward the board.
+   if(socket)socket.Release(token);if(dotPaint){dotPaint.Begin();dotPaint.End();}
    Phase="absorb";var fade=root.GetComponentsInChildren<Shape>(true).ToArray();var start=fade.Select(f=>f.color.a).ToArray();
    System.Action<float> step=p=>{Progress=p;for(int i=0;i<fade.Length;i++)if(fade[i]){var c=fade[i].color;c.a=start[i]*(1-p);fade[i].color=c;}};
-   if(hold)yield return hold.Activate(()=>Delta,step);else for(float t=0;t<CircuitGraphic.SignalLength;t+=Delta){step(t/CircuitGraphic.SignalLength);yield return null;}
-   if(hold)hold.Hide(.4f);
+   if(dot){
+    // 11_queue.js drawBoard 'act' (1.25 s): the dot enters the board at the chosen route's end, runs 40 px in, across, then to the target;
+    // head = ease3(k / .8); the board edge glows rgba(cy, .25 sin(pi k)) at width 6. It sits under the servers like the HTML.
+    var controller=GetComponent<BattleController>();var boardLayer=controller&&controller.presentation?controller.presentation.BoardEffectUnderServers("카드 점 - 판 안"):Root("카드 점 - 판 안");
+    var paint=FxPainter.Create("카드 점 - 대상까지",boardLayer);Vector2 from=Routes[route][4],tg=DotTarget(card,owner,target);
+    var path=new List<Vector2>{from,from+new Vector2(40,0),new Vector2(tg.x,from.y),tg};
+    for(float t=0;t<1;t+=Delta/CircuitGraphic.SignalLength){step(t);paint.Begin();Dot(paint,path,Ease3(t/.8f),1,ink);paint.StrokeRect(582,129,800,716,6,new Color(ink.r,ink.g,ink.b,.25f*Mathf.Sin(Mathf.PI*t)));paint.End();yield return null;}
+    Destroy(boardLayer.gameObject);
+   }
+   else if(hold)yield return hold.Activate(()=>Delta,step);else for(float t=0;t<CircuitGraphic.SignalLength;t+=Delta){step(t/CircuitGraphic.SignalLength);yield return null;}
+   // a card the player is holding now (selected or dragged) keeps its hold layer
+   holders=Mathf.Max(0,holders-1);var owner2=GetComponent<BattleController>();if(hold&&holders==0&&!(owner2&&owner2.HoldingCard))hold.Hide(.4f);
    Destroy(root.gameObject);
    Phase="idle";Progress=0;
+  }
+  static float Ease3(float v){v=Mathf.Clamp01(v);return 1-(1-v)*(1-v)*(1-v);}
+  static readonly Color DotCore=new Color(233/255f,251/255f,1);
+  // 11_queue.js comet() + dot(): 10 tail pieces of .035 path each (head core, then rgba(158,242,255,.8 f^2), width 1.2 + 2f),
+  // a 9 px halo at .35 and a 3.5 px core at the head
+  public static void Dot(FxPainter g,IList<Vector2> pts,float head,float a,Color ink){
+   for(int m=0;m<10;m++){Vector2 p0=Along(pts,head-(m+1)*.035f),p1=Along(pts,head-m*.035f);float f=1-m/10f;
+    g.Line(p0,p1,1.2f+2*f,m>0?new Color(158/255f,242/255f,1,.8f*f*f*a):new Color(DotCore.r,DotCore.g,DotCore.b,a));}
+   var h=Along(pts,head);g.Disc(h,9,new Color(ink.r,ink.g,ink.b,.35f*a));g.Disc(h,3.5f,new Color(DotCore.r,DotCore.g,DotCore.b,a));
+  }
+  // the dot's destination: a loaded server (inject) or the middle of the rung (rerouting), as target() in 11_queue.js
+  public static Vector2 DotTarget(Card card,int owner,int target){
+   if(card==Card.Reroute){int slot=target<0?2:Battle.Slot(target);return new Vector2((BattleController.LaneX[slot%2]+BattleController.LaneX[slot%2+1])/2,BattleController.RowY[slot/2]);}
+   return new Vector2(BattleController.LaneX[target<0?1:target],owner==0?777:201);
   }
   public static Vector2 Along(IList<Vector2> points,float t){float length=0;for(int i=1;i<points.Count;i++)length+=Vector2.Distance(points[i-1],points[i]);float distance=Mathf.Clamp01(t)*length;for(int i=1;i<points.Count;i++){float n=Vector2.Distance(points[i-1],points[i]);if(distance<=n)return Vector2.Lerp(points[i-1],points[i],n==0?0:distance/n);distance-=n;}return points[points.Count-1];}
   IEnumerator Absorb(Color color){
@@ -142,7 +187,10 @@ namespace Breach.UI {
    var controller=GetComponent<BattleController>();
    bool onBoard=card!=Card.Buffer&&card!=Card.Overflow;
    var root=onBoard&&controller&&controller.presentation?controller.presentation.BoardEffect("카드 적용 결과"):Root("카드 적용 결과");Color color=owner==0?Ui.Cyan:Ui.Red;Vector2 point;string message;Shape mark;RectTransform wall=null;var gates=new List<RectTransform>();
-   if(card==Card.Inject||card==Card.ZeroDay){point=new Vector2(BattleController.LaneX[target],owner==0?777:201);message=card==Card.ZeroDay?"관통 패킷 장전":"+1 장전";mark=Ui.Box("대상 서버 점등",root,point.x-38,point.y-38,76,76,color,false,4,6);}
+   FxPainter glitchHex=null;RectTransform glitchLayer=null;
+   // item 5 (11_queue.js hexGlitch): the load mark is a server-shaped hexagon that jitters for .28 s and flashes, instead of the 76 px square
+   if(card==Card.Inject||card==Card.ZeroDay){point=new Vector2(BattleController.LaneX[target],owner==0?777:201);message=card==Card.ZeroDay?"관통 패킷 장전":"+1 장전";mark=Ui.Box("대상 서버 점등 (자리)",root,point.x-38,point.y-38,76,76,Color.clear,false,4,6);mark.enabled=false;
+    glitchLayer=controller&&controller.presentation?controller.presentation.BoardEffectUnderServers("장전 육각형"):Root("장전 육각형");glitchHex=FxPainter.Create("장전 육각형 지직",glitchLayer);}
    else if(card==Card.Reroute){int slot=Battle.Slot(target);point=new Vector2((BattleController.LaneX[slot%2]+BattleController.LaneX[slot%2+1])/2,BattleController.RowY[slot/2]);var rider=controller&&controller.State!=null?controller.State.RungRiders[slot/2]:-1;message=connected?"회선 연결 · "+BattleController.RiderName(rider):"회선 제거";color=connected?BattleController.RiderColor(rider):new Color(.5f,.6f,.66f);mark=Ui.Line("회선 적용",root,new Vector2(point.x-140,point.y),new Vector2(point.x+140,point.y),color,7);}
    else if(card==Card.Firewall){point=CombatPresentation.FirewallPoint(owner,target);message="양방향 경로 차단";color=Ui.Gold;
     if(controller&&controller.State!=null)foreach(var gatePoint in CombatPresentation.FirewallEndpoints(controller.State,target))gates.Add(CombatPresentation.Firewall(root,gatePoint.x,gatePoint.y,0));
@@ -152,9 +200,16 @@ namespace Breach.UI {
    if(controller&&controller.State!=null&&controller.presentation){
     var st=controller.State;var plan=new EventFx.Plan();
     if(card==Card.Inject||card==Card.ZeroDay){
+     var packet=st.Route(owner,target);var pts=BattleController.Points(packet);
+     if(EffectPick==ActivateFx.Now){
      // load: ring at the channel start (10 -> 34), the packet's path from 0.15 s, its arrival server ring from 0.6 s
-     var pts=BattleController.Points(st.Route(owner,target));Vector2 startPoint=new Vector2(BattleController.LaneX[target],owner==0?777-26*EventFx.S:201+26*EventFx.S);
+     Vector2 startPoint=new Vector2(BattleController.LaneX[target],owner==0?777-26*EventFx.S:201+26*EventFx.S);
      plan.Rings.Add((startPoint,EventFx.Side(owner),10*EventFx.S,34*EventFx.S,0));plan.Halos.Add((pts,EventFx.Side(owner),.15f));plan.Rings.Add((pts[pts.Count-1],EventFx.Side(owner),28,52,.6f));
+     }else{
+      // item 1: this action turn's effect (01_activate.js random); the glitch needs a still of the board at the activation moment
+      Texture2D shot=EffectPick==ActivateFx.Glitch&&Rate<BattleController.SkipSpeed?Grab():null;
+      var p=controller.presentation;controller.presentation.StartCoroutine(Owned(ActivateFx.Run(EffectPick,p.BoardEffectUnderServers("카드 발동 이펙트"),p.BoardEffect("카드 발동 - 판 밖 어둡게"),pts,owner,packet.End,shot,font,()=>Delta),shot));
+     }
     }else if(card==Card.Reroute){
      // link / unlink: the rung flashes (white / #ff8b9b), its two contacts ring (14 -> 46), and only the paths whose
      // arrival changed because of it glow in their side's color, each with its arrival server ring from 0.55 s.
@@ -173,9 +228,12 @@ namespace Breach.UI {
     if(!plan.Empty)controller.presentation.StartCoroutine(EventFx.Run(controller.presentation.BoardEffectUnderServers("이벤트 빛"),plan,()=>Delta));
    }
    var label=Ui.Text("적용 결과",root,point.x-110,point.y-(wall?85:63),220,30,message,font,19,color);label.alignment=TextAlignmentOptions.Center;
-   Phase="applied";for(float t=0;t<1;t+=Delta/.5f){Progress=t;float a=1-t*t;if(wall){float close=Ease(Mathf.InverseLerp(.22f,.52f,t));foreach(var gate in gates)CombatPresentation.CloseFirewall(gate,close);if(t<.52f)a=0;}mark.color=new Color(color.r,color.g,color.b,a);label.color=new Color(color.r,color.g,color.b,a);yield return null;}
-   Destroy(root.gameObject);Phase="idle";
+   float span=glitchHex?.6f:.5f;
+   Phase="applied";for(float t=0;t<1;t+=Delta/span){Progress=t;float a=1-t*t;
+    if(glitchHex){float v=t*span;a=v<.5f?1-(v/.5f)*(v/.5f):0;glitchHex.Begin();ActivateFx.HexGlitch(glitchHex,point,v,color);glitchHex.End();}if(wall){float close=Ease(Mathf.InverseLerp(.22f,.52f,t));foreach(var gate in gates)CombatPresentation.CloseFirewall(gate,close);if(t<.52f)a=0;}mark.color=new Color(color.r,color.g,color.b,a);label.color=new Color(color.r,color.g,color.b,a);yield return null;}
+   Destroy(root.gameObject);if(glitchLayer)Destroy(glitchLayer.gameObject);Phase="idle";
   }
+  static IEnumerator Owned(IEnumerator routine,Texture2D shot){yield return routine;if(shot)Destroy(shot);}
   // Render the canvas once through the main camera into an opaque texture. Reading the back buffer
   // (ScreenCapture) returned black or alpha-0 frames in the player, so the copy is drawn directly.
   Texture2D Grab(){
@@ -195,6 +253,7 @@ namespace Breach.UI {
   //  whole stage shakes on x only by (rnd(tick,9)-0.5)*10k; tick = floor(u*30). At p = 0.5 the next screen, already
   //  carrying the center band, replaces the copies. After the change the band holds 1.2 s and fades in 0.4 s.
   public IEnumerator Turn(int phase,int actor,int attacker,System.Action atPeak=null){
+   if(phase<2){ActionTurn++;EffectPick=ActivateFx.Choose(ActionTurn,EffectPick);}
    var root=Root("턴 전환");root.SetAsLastSibling();Color color=phase==2?new Color(1,.82f,.4f):actor==0?new Color(.22f,.851f,1):new Color(1,.294f,.4f);
    string title=phase==2?"RESOLVE":phase==0?"ATTACK":"DEFEND";
    string detail=(phase==2?"동시 발동":phase==0?"공격 턴":"방어 턴")+" · "+(phase==2?"양쪽":actor==0?"나":"상대");

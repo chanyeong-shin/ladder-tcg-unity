@@ -10,8 +10,12 @@ namespace Breach.UI {
  // While the card is scanned the circuit stays faint (2026-11-22); activation runs comets along the board-bound bundles.
  public sealed class CardHoldFx : MonoBehaviour {
   public static readonly Rect Board = new Rect(582, 129, 800, 716);
-  RectTransform root; CircuitGraphic screen, inner, signals; Shape[] dims;
+  RectTransform root; CircuitGraphic screen, inner, band, signals; Shape[] dims;
   float show, reveal, target, dimWeight = 1, innerPulse; float hideSeconds = .25f;
+  // seconds since the hold appeared (the HTML variant clock t of 02_redcircuit.js / 03_boardcircuit.js)
+  public float HoldTime { get; private set; }
+  public float ScreenAlpha { get { return screen ? screen.color.a : 0; } }
+  public float BandY { get { return band ? band.BandY : float.NaN; } }
   public bool Visible { get { return target > 0; } }
   public float Amount { get { return show; } }
 
@@ -29,15 +33,18 @@ namespace Breach.UI {
     Ui.Box("판 밖 어둡게 - 위", root, 0, 0, 1920, Board.y, shade), Ui.Box("판 밖 어둡게 - 아래", root, 0, Board.yMax, 1920, 1080 - Board.yMax, shade),
     Ui.Box("판 밖 어둡게 - 왼쪽", root, 0, Board.y, Board.x, Board.height, shade), Ui.Box("판 밖 어둡게 - 오른쪽", root, Board.xMax, Board.y, 1920 - Board.xMax, Board.height, shade) };
    inner = Make("판 안 회로 (희미하게)", "Circuit_Board", new Color(Ui.Cyan.r, Ui.Cyan.g, Ui.Cyan.b, .07f)); inner.Glow = 0;
+   // week 12 item 3 (03_boardcircuit.js "flow"): a 180 px bright band runs down the board every 3.0 s
+   band = Make("판 안 회로 - 흐르는 띠", "Circuit_Board", Color.clear); band.Glow = 1; band.BandHeight = 180;
    signals = Make("발동 신호", "Circuit_Screen", Color.white); signals.Signals = true;
    Apply();
   }
   CircuitGraphic Make(string name, string data, Color color) { var g = Ui.Rect(name, root, 0, 0, 1920, 1080).gameObject.AddComponent<CircuitGraphic>(); g.Data = CircuitData.Load(data); g.color = color; g.raycastTarget = false; return g; }
-  public void Show(bool dim = true) { target = 1; if (dim) dimWeight = 1; else if (show <= 0) dimWeight = 0; }
+  public void Show(bool dim = true) { if (show <= 0 && target <= 0) HoldTime = 0; target = 1; if (dim) dimWeight = 1; else if (show <= 0) dimWeight = 0; }
   public void Hide(float seconds = .25f) { target = 0; hideSeconds = Mathf.Max(.01f, seconds); }
   public void HideNow() { target = show = reveal = 0; if (signals) signals.SignalTime = -1; Apply(); }
   void Update() {
-   float dt = Time.unscaledDeltaTime;
+   float dt = Time.unscaledDeltaTime * FxClock.Scale;
+   if (target > 0 && show <= 0) HoldTime = 0; else if (show > 0 || target > 0) HoldTime += dt;
    if (target > 0) { show = Mathf.MoveTowards(show, 1, dt / .25f); reveal = Mathf.MoveTowards(reveal, 1, dt / .5f); }
    else { show = Mathf.MoveTowards(show, 0, dt / hideSeconds); if (show <= 0) reveal = 0; }
    Apply();
@@ -48,8 +55,17 @@ namespace Breach.UI {
    screen.Reveal = reveal; var ink = Tint();
    // user 11-22: the red circuit should look as bright as the blue one; match perceived luminance (cyan 0.73 vs red 0.45)
    float gain = Lum(EventFx.Me) / Mathf.Max(.05f, Lum(ink));
-   screen.color = new Color(ink.r, ink.g, ink.b, Mathf.Min(1, .22f * gain) * e); screen.SetVerticesDirty();
-   inner.Reveal = 1; inner.color = new Color(ink.r, ink.g, ink.b, Mathf.Max(.073f * gain * e * Mathf.Clamp01(reveal), innerPulse * gain)); inner.SetVerticesDirty();
+   // week 12 item 2 (02_redcircuit.js "pulse"): in the blue turn the red circuit breathes, a = .46 + .16 sin(2 pi t / 2.0), Glow .6;
+   // the red turn keeps its blue circuit at .22 x gain, Glow .4 (the user's reference)
+   bool blueTurn = ink == EventFx.Enemy;
+   screen.Glow = blueTurn ? .6f : .4f;
+   float screenAlpha = blueTurn ? .46f + .16f * Mathf.Sin(2 * Mathf.PI * HoldTime / 2.0f) : Mathf.Min(1, .22f * gain);
+   screen.color = new Color(ink.r, ink.g, ink.b, screenAlpha * e); screen.SetVerticesDirty();
+   // week 12 item 3: always-on board circuit .12 x gain (was .073 x gain), Glow 0
+   inner.Reveal = 1; inner.color = new Color(ink.r, ink.g, ink.b, Mathf.Max(.12f * gain * e * Mathf.Clamp01(reveal), innerPulse * gain)); inner.SetVerticesDirty();
+   // band: y = B.y - 90 + ((t % 3.0) / 3.0) * (B.h + 180), color = ink mixed 40% toward white, alpha .55, Glow 1.0 (halo .55 x .35)
+   var light = Color.Lerp(ink, Color.white, .4f);
+   band.Reveal = 1; band.BandY = Board.y - 90 + ((HoldTime % 3f) / 3f) * (Board.height + 180); band.color = new Color(light.r, light.g, light.b, .55f * e * Mathf.Clamp01(reveal)); band.SetVerticesDirty();
   }
   // Activation: one comet per board-bound bundle, staggered over 0.45 s, 0.75 s each, while the circuit stays faint.
   public IEnumerator Activate(System.Func<float> delta, System.Action<float> progress) {

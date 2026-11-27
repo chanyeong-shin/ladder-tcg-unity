@@ -27,11 +27,16 @@ namespace Breach.UI
         CanvasGroup resultGroup;
         TMP_Text summary;
         RectTransform drawRoot;
-        float Delta { get { return Time.unscaledDeltaTime * Mathf.Max(.1f, c.PlaybackSpeed); } }
+        float Delta { get { return c.Paused ? 0 : Time.unscaledDeltaTime * Mathf.Max(.1f, c.PlaybackSpeed); } }
         static float Ease(float t) { t = Mathf.Clamp01(t); return t * t * (3 - 2 * t); }
         static CanvasGroup Group(GameObject item) { var group = item.GetComponent<CanvasGroup>(); return group ? group : item.AddComponent<CanvasGroup>(); }
 
         public Button TitleButton { get; private set; }
+        public Button ReplayButton { get; private set; }
+        public ReplayView Replay { get; private set; }
+        CanvasGroup contentGroup;
+        public bool ReplayOpen { get { return Replay && Replay.IsOpen; } }
+        public void CloseReplay() { if (Replay) Replay.Close(); }
         public void Initialize(BattleController controller)
         {
             c = controller;
@@ -42,11 +47,22 @@ namespace Breach.UI
             titleButton.onClick = new Button.ButtonClickedEvent(); titleButton.onClick.AddListener(() => { if (c.result.activeSelf) c.ReturnToTitle(); });
             foreach (var label in titleButton.GetComponentsInChildren<TMP_Text>(true)) label.text = "타이틀로 이동 / TITLE";
             TitleButton = titleButton;
-            foreach (var b in new[] { c.retryButton, titleButton }) b.gameObject.AddComponent<ResultButtonFx>();
-            summary = Ui.Text("확정 결과 요약", c.result.transform, 300, 730, 1320, 150, "", c.font, 19, new Color(.7f, .82f, .86f));
-            summary.alignment = TextAlignmentOptions.Center;
-            summary.textWrappingMode = TextWrappingModes.Normal;
-            foreach (var rect in new[] { c.resultLabel.rectTransform, (RectTransform)c.retryButton.transform, (RectTransform)titleButton.transform, summary.rectTransform })
+            // week 12 item 10 (10_resultlog.js replay): a third button 전투 다시 보기 / REPLAY 85 px below, the summary moves to 805
+            var replayButton = Instantiate(c.retryButton.gameObject, c.result.transform).GetComponent<Button>(); replayButton.name = "전투 다시 보기";
+            ((RectTransform)replayButton.transform).anchoredPosition = ((RectTransform)c.retryButton.transform).anchoredPosition + new Vector2(0, -170);
+            replayButton.onClick = new Button.ButtonClickedEvent(); replayButton.onClick.AddListener(() => { if (c.result.activeSelf && !ReplayOpen) Replay.Open(); });
+            foreach (var label in replayButton.GetComponentsInChildren<TMP_Text>(true)) label.text = "전투 다시 보기 / REPLAY";
+            ReplayButton = replayButton;
+            // the result content fades out while the replay is open (fadeOnLog), so it gets its own group
+            var box = Ui.Rect("결과 내용", c.result.transform, 0, 0, 1920, 1080); contentGroup = box.gameObject.AddComponent<CanvasGroup>();
+            foreach (var t in new Transform[] { c.resultLabel.transform, c.retryButton.transform, titleButton.transform, replayButton.transform }) t.SetParent(box, false);
+            foreach (var b in new[] { c.retryButton, titleButton, replayButton }) b.gameObject.AddComponent<ResultButtonFx>();
+            // first line baseline 859 (glyph bottom in the mockup capture); 27 px lines. The mockup's key line (ENTER · 다시 시작 ...) is left out (user 11-26: no control hints)
+            summary = Ui.Text("확정 결과 요약", box, 300, 859 - 1.16f * 19, 1320, 150, "", c.font, 19, new Color(179 / 255f, 209 / 255f, 219 / 255f));
+            summary.alignment = TextAlignmentOptions.Top; summary.lineSpacing = (27 - 1.448f * 19) / 19 * 100;
+            summary.textWrappingMode = TextWrappingModes.NoWrap;
+            Replay = gameObject.AddComponent<ReplayView>(); Replay.Initialize(c, contentGroup);
+            foreach (var rect in new[] { c.resultLabel.rectTransform, (RectTransform)c.retryButton.transform, (RectTransform)titleButton.transform, (RectTransform)replayButton.transform, summary.rectTransform })
             {
                 resultParts.Add(rect); resultHomes.Add(rect.anchoredPosition);
             }
@@ -156,9 +172,10 @@ namespace Breach.UI
             string last = string.Join("  /  ", events.Skip(Mathf.Max(0, events.Length - 2)));
             summary.text = "ROUND " + c.State.Round + " · 최종 생존 서버  나 " + c.State.Alive(0) + " / 3  ·  상대 " + c.State.Alive(1) + " / 3"
              + "\n이번 해결 서버 파괴  나 " + (mineBefore - c.State.Alive(0)) + "  ·  상대 " + (enemyBefore - c.State.Alive(1))
-             + (last.Length > 0 ? "\n" + last : "") + "\nENTER · 다시 시작    ESC · 타이틀로 이동";
+             + (last.Length > 0 ? "\n" + last : "");
             c.resultLabel.color = c.State.Winner == 0 ? Ui.Cyan : c.State.Winner == 1 ? Ui.Red : Ui.Gold;
-            resultGroup.alpha = 0; c.retryButton.interactable = false; if (TitleButton) TitleButton.interactable = false; c.result.SetActive(true);
+            if (Replay) Replay.CloseNow(); if (contentGroup) contentGroup.alpha = 1; ResultButtonFx.Clock = 0;
+            resultGroup.alpha = 0; c.retryButton.interactable = false; if (TitleButton) TitleButton.interactable = false; if (ReplayButton) ReplayButton.interactable = false; c.result.SetActive(true);
             for (float t = 0; t < 1; t += Delta / .42f)
             {
                 float e = Ease(t); resultGroup.alpha = e;
@@ -173,10 +190,11 @@ namespace Breach.UI
             for (int i = 0; i < resultParts.Count; i++) if (resultParts[i]) resultParts[i].anchoredPosition = resultHomes[i];
             if (c && c.retryButton) c.retryButton.interactable = true;
             if (TitleButton) TitleButton.interactable = true;
+            if (ReplayButton) ReplayButton.interactable = true;
         }
         public void Cancel()
         {
-            RestoreTitle(); RestoreDraw(); RestoreResult();
+            RestoreTitle(); RestoreDraw(); RestoreResult(); if (Replay) Replay.CloseNow();
         }
         void OnDisable() { Cancel(); }
     }
