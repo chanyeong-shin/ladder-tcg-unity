@@ -63,13 +63,16 @@ namespace Breach.UI {
    // becomes 7 circuit lines with a jog and an end pad. The circuit stays faintly on screen (2026-11-22 request).
    var hold=GetComponent<CardHoldFx>();if(hold)hold.Show(hold.Visible);holders++;
    chip.type=Image.Type.Filled;chip.fillMethod=Image.FillMethod.Vertical;chip.fillOrigin=(int)Image.OriginVertical.Bottom;
-   var barGlow=Ui.Box("스캔 빛 번짐",root,dock.x-16,dock.y-8,dock.width+32,16,new Color(.91f,.98f,1,.3f));
-   var bar=Ui.Box("스캔 빛 막대",root,dock.x-8,dock.y-2,dock.width+16,4,new Color(.91f,.98f,1));
+   // 13주차 시안 (2026-11-27 사용자 "상대턴인데 카드가 스켄될때 파랑색이네 이거 고쳐야할듯"): 스캔 회로·끝 패드·빛 막대를 턴 색으로
+   //  (01_socket.js scanCircuit: 회로 = 턴 색과 흰색 45%, 끝 패드 = 턴 색, 빛 막대 = 턴 색과 흰색 85%)
+   Color turnInk=socket?socket.TargetInk:color,barInk=Color.Lerp(turnInk,Color.white,.85f);
+   var barGlow=Ui.Box("스캔 빛 번짐",root,dock.x-16,dock.y-8,dock.width+32,16,new Color(barInk.r,barInk.g,barInk.b,.3f));
+   var bar=Ui.Box("스캔 빛 막대",root,dock.x-8,dock.y-2,dock.width+16,4,barInk);
    // user 11-22: "카드 스캔될때 회로가 퍼져야지 쭉 늘어나는건 별로다" / "회로는 레퍼런스대로".
    // Reference rules (same as _도구/회로무늬_생성.py): parallel bundles at a fixed pitch, 45 degree bends with mitred
    // offsets so the pitch stays equal, an end pad on every line, no crossings. When the bar passes a bundle row a chip
    // appears at the card's center and its 4 lines spread out to both card edges.
-   var lineInk=new Color(.498f,.914f,1);var seeds=new List<(Vector2 p,float at,Shape pad)>();var traces=new List<(int seed,Vector2[] pts,float total,Shape[] segs,Shape tip)>();
+   var lineInk=Color.Lerp(turnInk,Color.white,.45f);var seeds=new List<(Vector2 p,float at,Shape pad)>();var traces=new List<(int seed,Vector2[] pts,float total,Shape[] segs,Shape tip)>();
    // user 11-22: "카드도 좀 회로 촘촘하게 다시 만들고, 테두리까지 각 살려서 주입되게".
    // 6 bundles x 4 lines at pitch 5 fill the card; every line ends on the card border, which is itself a trace with
    // 45 degree chamfered corners drawn down both sides as the bar passes; a pad marks each junction.
@@ -83,7 +86,7 @@ namespace Breach.UI {
       var pts=new[]{new Vector2(cx0+dir*7,y),new Vector2(jogX,y),new Vector2(jogX+dir*Mathf.Abs(rise),y+rise),new Vector2(dir<0?dock.x:dock.xMax,y+rise)};
       float total=0;var segs=new Shape[3];
       for(int k=1;k<4;k++){total+=Vector2.Distance(pts[k-1],pts[k]);segs[k-1]=Ui.Line("스캔 회로선",root,pts[k-1],pts[k],lineInk,1.2f);segs[k-1].gameObject.SetActive(false);}
-      var tip=Ui.Box("스캔 회로 테두리 접점",root,pts[3].x-2,pts[3].y-2,4,4,Ui.Cyan);tip.gameObject.SetActive(false);traces.Add((seeds.Count-1,pts,total,segs,tip));
+      var tip=Ui.Box("스캔 회로 테두리 접점",root,pts[3].x-2,pts[3].y-2,4,4,turnInk);tip.gameObject.SetActive(false);traces.Add((seeds.Count-1,pts,total,segs,tip));
      }
     }
    }

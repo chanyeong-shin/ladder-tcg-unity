@@ -72,6 +72,61 @@ namespace Breach.UI {
   }
   public void Ring(Vector2 c, float r, float w, Color col, int segments = 64) { if (r <= 0) return; var p = new Vector2[segments]; for (int i = 0; i < segments; i++) { float a = i * Mathf.PI * 2 / segments; p[i] = c + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r; } StrokeClosed(p, w, col); }
   public void Disc(Vector2 c, float r, Color col, int segments = 32) { var p = new Vector2[segments]; for (int i = 0; i < segments; i++) { float a = i * Mathf.PI * 2 / segments; p[i] = c + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r; } FillPoly(p, col); }
+  // 13주차: 02_shot.js glow() — createRadialGradient 0: mix(col, 흰색, .55) a / .35: col a*.45 / 1: col 0
+  public void Glow(Vector2 c, float r, Color col, float a, int segments = 40) {
+   if (a <= 0 || r <= 0) return; a = Mathf.Clamp01(a);
+   RadialFan(c, r, r, new[] { 0f, .35f, 1f }, new[] { WithA(Color.Lerp(col, Color.white, .55f), a), WithA(col, a * .45f), WithA(col, 0) }, segments);
+  }
+  // 02_shot.js flare(): 가로 3.4s x 세로 s 로 늘린 반지름 28 빛(0: mix(col, 흰색, .5) .7a / .4: col .32a / 1: 0) + 가로 160s x 1.5 선(mix(col, 흰색, .6) .55a)
+  public void Flare(Vector2 c, Color col, float s, float a) {
+   if (a <= 0 || s <= 0) return; a = Mathf.Clamp01(a);
+   RadialFan(c, 28 * 3.4f * s, 28 * s, new[] { 0f, .4f, 1f }, new[] { WithA(Color.Lerp(col, Color.white, .5f), .7f * a), WithA(col, .32f * a), WithA(col, 0) }, 48);
+   FillRect(c.x - 80 * s, c.y - .75f, 160 * s, 1.5f, WithA(Color.Lerp(col, Color.white, .6f), .55f * a));
+  }
+  void RadialFan(Vector2 c, float rx, float ry, float[] stops, Color[] cols, int segments) {
+   int center = V(c, cols[0]); int prev = -1;
+   for (int s = 1; s < stops.Length; s++) {
+    int first = verts.Count;
+    for (int i = 0; i < segments; i++) { float a = i * Mathf.PI * 2 / segments; V(c + new Vector2(Mathf.Cos(a) * rx * stops[s], Mathf.Sin(a) * ry * stops[s]), cols[s]); }
+    for (int i = 0; i < segments; i++) { int j = (i + 1) % segments; if (prev < 0) Tri(center, first + i, first + j); else { Tri(prev + i, first + i, first + j); Tri(prev + i, first + j, prev + j); } }
+    prev = first;
+   }
+  }
+  static Color WithA(Color c, float a) { c.a = a; return c; }
+  // ctx.stroke() of an open polyline: miter joins (canvas default lineJoin), butt or round caps. Overlap-free so a
+  // translucent stroke does not darken at its joins.
+  public void Stroke(IList<Vector2> p, float w, Color c, bool roundCaps = false) {
+   int n = p.Count; if (n < 2 || w <= 0 || c.a <= 0) return; float h = w / 2;
+   var pts = new List<Vector2>(n); foreach (var q in p) if (pts.Count == 0 || (q - pts[pts.Count - 1]).sqrMagnitude > 1e-4f) pts.Add(q); n = pts.Count; if (n < 2) return;
+   var L = new Vector2[n]; var R = new Vector2[n];
+   for (int i = 0; i < n; i++) {
+    Vector2 d0 = i > 0 ? (pts[i] - pts[i - 1]).normalized : (pts[1] - pts[0]).normalized, d1 = i < n - 1 ? (pts[i + 1] - pts[i]).normalized : d0;
+    Vector2 n0 = new Vector2(-d0.y, d0.x), n1 = new Vector2(-d1.y, d1.x), m = (n0 + n1); if (m.sqrMagnitude < 1e-6f) m = n0; m.Normalize();
+    float k = Vector2.Dot(m, n0); if (k < .1f) k = .1f; // canvas miterLimit 10
+    L[i] = pts[i] + m * (h / k); R[i] = pts[i] - m * (h / k);
+   }
+   for (int i = 1; i < n; i++) QuadV(L[i - 1], L[i], R[i], R[i - 1], c, c, c, c);
+   if (roundCaps) { Cap(pts[0], (pts[0] - pts[1]).normalized, h, c); Cap(pts[n - 1], (pts[n - 1] - pts[n - 2]).normalized, h, c); }
+  }
+  void Cap(Vector2 at, Vector2 outward, float h, Color c) {
+   const int seg = 10; var nrm = new Vector2(-outward.y, outward.x); int center = V(at, c), first = verts.Count;
+   for (int i = 0; i <= seg; i++) { float a = i * Mathf.PI / seg; V(at + (nrm * Mathf.Cos(a) + outward * Mathf.Sin(a)) * h, c); }
+   for (int i = 0; i < seg; i++) Tri(center, first + i, first + i + 1);
+  }
+  // ctx.roundRect(x, y, w, h, r) fill
+  public void FillRoundRect(float x, float y, float w, float h, float r, Color c) {
+   if (w <= 0 || h <= 0 || c.a <= 0) return; r = Mathf.Min(r, w / 2, h / 2); var p = new List<Vector2>(); const int seg = 6;
+   Vector2[] centers = { new Vector2(x + w - r, y + r), new Vector2(x + w - r, y + h - r), new Vector2(x + r, y + h - r), new Vector2(x + r, y + r) };
+   for (int k = 0; k < 4; k++) for (int i = 0; i <= seg; i++) { float a = -Mathf.PI / 2 + (k + i / (float)seg) * Mathf.PI / 2; p.Add(centers[k] + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r); }
+   FillPoly(p, c);
+  }
+  // rounded rect outline (stroke centered on the edge)
+  public void StrokeRoundRect(float x, float y, float w, float h, float r, float lw, Color c) {
+   if (w <= 0 || h <= 0 || c.a <= 0) return; r = Mathf.Min(r, w / 2, h / 2); var p = new List<Vector2>(); const int seg = 6;
+   Vector2[] centers = { new Vector2(x + w - r, y + r), new Vector2(x + w - r, y + h - r), new Vector2(x + r, y + h - r), new Vector2(x + r, y + r) };
+   for (int k = 0; k < 4; k++) for (int i = 0; i <= seg; i++) { float a = -Mathf.PI / 2 + (k + i / (float)seg) * Mathf.PI / 2; p.Add(centers[k] + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r); }
+   StrokeClosed(p, lw, c);
+  }
   // Rect outside a hole (ctx.rect(screen); ctx.rect(hole); fill('evenodd'))
   public void FillOutside(Rect hole, Color c) { FillRect(0, 0, 1920, hole.y, c); FillRect(0, hole.yMax, 1920, 1080 - hole.yMax, c); FillRect(0, hole.y, hole.x, hole.height, c); FillRect(hole.xMax, hole.y, 1920 - hole.xMax, hole.height, c); }
  }

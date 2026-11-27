@@ -32,7 +32,7 @@ namespace Breach.UI
         public void CancelBridge() { if (bridge) bridge.Cancel(); }
         public static string RiderName(int rider) { return rider < 0 ? "양쪽" : rider == 0 ? "나만" : "상대만"; }
         public static Color RiderColor(int rider) { return rider < 0 ? BridgeDots.All : rider == 0 ? BridgeDots.Me : BridgeDots.Enemy; }
-        bool busy, dragging, skipping; int selected = -1, hover = -1; CardView dragged;
+        bool busy, dragging, skipping; public bool Dragging { get { return dragging; } } int selected = -1, hover = -1; CardView dragged;
         public DeckView deck { get; private set; } public PauseMenu pause { get; private set; } public readonly ReplayLog Replay = new ReplayLog();
         // ESC menu (09_settings.js flow): while it is open the battle waits (Time.timeScale 0 stops Wait/CardTransferFx/SocketFx; the presentations check Paused)
         public bool Paused { get { return pause && pause.IsOpen; } }
