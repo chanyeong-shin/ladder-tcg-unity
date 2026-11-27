@@ -145,14 +145,10 @@ namespace Breach.UI
         public static Vector2 FirewallPoint(int serverOwner,int lane) => new Vector2(BattleController.LaneX[lane],serverOwner==0?686:292);
         public static IEnumerable<Vector2> FirewallEndpoints(Battle state,int onlyChannel=-1)
         {
-            var seen=new HashSet<int>();
-            // The channel rule is unchanged. Project its blocked paths onto the
-            // receiving server gates, including rerouted paths and both directions.
-            for(int sender=0;sender<2;sender++)for(int lane=0;lane<3;lane++){
-                var route=state.Route(sender,lane);
-                if(!route.Cells.Any(cell=>onlyChannel>=0?cell.Lane==onlyChannel:state.Walls[cell.Lane]))continue;
-                int receiver=1-sender,key=receiver*3+route.End;
-                if(seen.Add(key))yield return FirewallPoint(receiver,route.End);
+            // 11-28 사용자 "방화벽은 설치한곳만 되야하는거 아님?" → 1번(설치한 채널만): 문은 설치한 채널의 양쪽 서버 앞에만 생긴다(사다리로 꺾인 길의 도착 서버에는 생기지 않는다)
+            for(int lane=0;lane<3;lane++){
+                if(onlyChannel>=0?lane!=onlyChannel:!state.Walls[lane])continue;
+                yield return FirewallPoint(1,lane); yield return FirewallPoint(0,lane);
             }
         }
         public static void CloseFirewall(RectTransform root, float amount)
@@ -170,6 +166,7 @@ namespace Breach.UI
         //   12_zeroday.js B(core) = 제로데이 몫(Packet.Zero)은 빔 속 금색 심(2.5 px)으로 같이 날아가 접점을 뚫고(옆으로 금색 불꽃) 그대로 착탄. 방화벽에는 막힘.
         // 시안의 직선 거리 d 는 BattleController.Points 폴리라인 위 길이로 바꿔 쓴다(가로선을 타면 빔·꺾쇠·어둡게 구멍도 꺾인다).
         const float Charge = 1.3f, Reach = .5f, Snap = .25f, Extend = .2f, Fade = .35f, Struggle = 1.4f;
+        const float FollowHold = Extend + .3f, FollowBack = .5f; // 이긴 탄 따라가기: 착탄 뒤 .3초 머묾, .5초에 돌아옴
         // 검사·다른 연출이 읽는 시간 값
         public const float ChargeSeconds = Charge, ReachSeconds = Reach, StruggleSeconds = Struggle;
         static readonly float[] Pumps = { .15f, .45f, .75f };
@@ -226,8 +223,10 @@ namespace Breach.UI
             var s = new Shot { packet = packet, path = BattleController.Points(packet) }; s.contact = s.path.Last();
             if (packet.Blocked)
             {
-                int receiver=1-packet.Owner;
-                s.contact=FirewallPoint(receiver,packet.End)+new Vector2(0,receiver==0?-26.4f:26.4f);
+                // 11-28: 도착 채널에 방화벽이면 받는 서버 문 앞, 아니면(출발 채널) 쏜 쪽 자기 서버 문 앞에서 막힘. 둘 다 판 안쪽 26.4 px
+                int receiver=1-packet.Owner; bool atEnd=c.State!=null&&c.State.Walls[packet.End]||!(c.State!=null&&c.State.Walls[packet.Start]);
+                int gateOwner=atEnd?receiver:packet.Owner,gateLane=atEnd?packet.End:packet.Start;
+                s.contact=FirewallPoint(gateOwner,gateLane)+new Vector2(0,gateOwner==0?-26.4f:26.4f);
                 s.contactEvent=true;
             }
             else if (s.Normal > 0)
@@ -576,10 +575,13 @@ namespace Breach.UI
         {
             if (E == null) return (1, ViewCenter);
             (float z, Vector2 p) b;
-            if (E.clash != null) { var k = E.clash; b = Keys(e, (k.c0 - .05f, 1, ViewCenter, false), (k.c0 + .25f, 1.7f, k.meetPoint, true), (k.c1, 1.78f, k.meetPoint, false), (k.c1 + .45f, 1, ViewCenter, false)); }
+            // 11-28 사용자 "카메라 확대 연출아 힘겨루기에서 이긴쪽의 탄환을 따라갔으면 좋겠음": 승부가 나면 이긴 탄의 머리를 따라 착탄까지 가고, 머문 뒤 돌아온다(비기면 그대로)
+            bool follow = E.clash != null && E.clash.win >= 0 && e > E.clash.c1;
+            if (follow) { var k = E.clash; Vector2 head = k.by[k.win].position; float r = e - k.c1; if (r < FollowHold) b = (Mathf.Lerp(1.78f, 1.5f, Smooth(Mathf.Clamp01(r / Extend))), head); else { float x = Smooth(Mathf.Clamp01((r - FollowHold) / FollowBack)); b = (Mathf.Lerp(1.5f, 1, x), Vector2.Lerp(head, ViewCenter, x)); } }
+            else if (E.clash != null) { var k = E.clash; b = Keys(e, (k.c0 - .05f, 1, ViewCenter, false), (k.c0 + .25f, 1.7f, k.meetPoint, true), (k.c1, 1.78f, k.meetPoint, false), (k.c1 + .45f, 1, ViewCenter, false)); }
             else { var aim = new Vector2(E.at.x, Mathf.Lerp(Mid, E.at.y, .6f)); b = Keys(e, (E.t - .35f, 1, ViewCenter, false), (E.t, 1.35f, aim, true), (E.t + .25f, 1.35f, aim, false), (E.t + .7f, 1, ViewCenter, false)); }
             float p = Punch(e - E.t) * .22f; if (p <= 0) return b;
-            return (b.z * (1 + p), Vector2.Lerp(b.p, E.at, p / .22f));
+            return (b.z * (1 + p), follow ? b.p : Vector2.Lerp(b.p, E.at, p / .22f));
         }
         // mountShow 흔들림: a = amp (1 - k)^2, 세로 a sin(92 T + 7 t) · 가로 .35 a sin(71 T + 3 t). T·t 는 충전 시작부터 초
         static Vector2 Shake(List<(float t, float amp, float dur)> shakes, float T)
@@ -674,7 +676,7 @@ namespace Breach.UI
             var lightRoot = BoardEffectUnderServers("이벤트 빛 - 발동"); StartCoroutine(EventFx.Run(lightRoot, lights, () => Delta));
             var crossings = shots.Select(s => RungCrossings(s)).ToList(); var crossed = new HashSet<(int, int)>();
             Phase = "flight";
-            float camEnd = E == null ? 0 : E.clash != null ? E.clash.c1 + .45f : E.t + .7f;
+            float camEnd = E == null ? 0 : E.clash != null ? E.clash.c1 + (E.clash.win >= 0 ? FollowHold + FollowBack : .45f) : E.t + .7f;
             float duration = Mathf.Max(shots.Max(s => EndTime(s)), lastT + .3f + .35f, camEnd, E != null ? E.t + .45f : 0, shakes.Count > 0 ? shakes.Max(s => s.t + s.dur) - Charge : 0);
             var first = clashes.Count > 0 ? clashes[0] : null;
             for (float elapsed = 0; ; elapsed = Mathf.Min(duration, elapsed + Delta))
@@ -694,7 +696,9 @@ namespace Breach.UI
                 painter.End();
                 for (int si = 0; si < shots.Count; si++) { var s = shots[si]; float p = s.head / s.length; foreach (var cross in crossings[si]) if (p >= cross.at && !crossed.Contains((si, cross.index)) && s.packet.Power > 0) { crossed.Add((si, cross.index)); StartCoroutine(BridgeDots.RungFlash(lightRoot, cross.a, cross.b, () => Delta)); } }
                 if (dimRef) { dim.Layers[0].Alpha = WindupDim(T); dim.Layers[1].Alpha = FireDim(elapsed, lastT); dim.Refresh(); }
-                var cam = Cam(E, elapsed); FrameCam(cam.z, cam.p, Shake(shakes, T)); yield return null; if (elapsed >= duration) break;
+                // 11-27 사용자 "힘겨루기가 없어도 카메라 확대가 되는데 겨루기 없으면 확대하지말자. 흔들림은 해도 될듯": 힘겨루기가 없으면 확대·튕김 없이 흔들림만
+                var cam = Cam(clashes.Count > 0 ? E : null, elapsed);
+                FrameCam(cam.z, cam.p, Shake(shakes, T)); yield return null; if (elapsed >= duration) break;
             }
             if (Cancelled(version, root)) yield break;
             ClashPhase = "idle";

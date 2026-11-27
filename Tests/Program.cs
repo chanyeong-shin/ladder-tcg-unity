@@ -14,6 +14,8 @@ class Program {
  b=Empty();for(int i=0;i<3;i++)b.Health[0,i]=b.Health[1,i]=3;b.Hidden.Add(new Secret(0,Card.ZeroDay,1));b.Hidden.Add(new Secret(1,Card.Firewall,1));b.Resolve();Check(b.Health[1,1]==3,"firewall blocks the zero-day shot");
  b=Empty();for(int i=0;i<3;i++)b.Health[0,i]=b.Health[1,i]=3;b.Hidden.Add(new Secret(0,Card.ZeroDay,0));b.Hidden.Add(new Secret(1,Card.ZeroDay,0));b.Resolve();Check(b.Health[0,0]==2&&b.Health[1,0]==2,"two zero-day shots pass each other");
  b=Empty();b.Hands[0].Add(Card.Firewall);b.Play(0,0,0);b.Power[0,0]=3;b.Power[1,0]=3;b.Resolve();Check(b.Health[0,0]==1&&b.Health[1,0]==1,"firewall blocks both sides");
+  b=Empty();for(int i=0;i<3;i++)b.Health[0,i]=b.Health[1,i]=3;b.Rungs[0]=0;b.Rungs[1]=1;b.Power[1,0]=1;Check(b.Route(1,0).End==2&&b.Route(1,0).Cells.Exists(x=>x.Lane==1),"fixture: route 1/0 passes lane 1 and ends at lane 2");b.Hidden.Add(new Secret(0,Card.Firewall,1));b.Resolve();Check(b.Health[0,2]==2,"firewall does not block a packet that only passes its channel");
+  b=Empty();for(int i=0;i<3;i++)b.Health[0,i]=b.Health[1,i]=3;b.Rungs[0]=0;b.Rungs[1]=1;b.Power[1,0]=1;b.Hidden.Add(new Secret(0,Card.Firewall,2));b.Resolve();Check(b.Health[0,2]==3,"firewall blocks a packet arriving on its channel");
  b=Empty();b.Power[0,1]=3;b.Resolve();Check(b.Health[1,0]==0&&b.Health[1,1]==0&&b.Health[1,2]==0&&b.Winner==0,"overflow splash and victory");
  b=Empty();Array.Clear(b.Health,0,b.Health.Length);b.Resolve();Check(b.Winner==-2,"both sides destroyed is draw");
  b=Empty();b.Health[0,0]=0;b.Hands[0].Add(Card.Inject);Check(!b.Play(0,0,0),"offline source rejects attack");

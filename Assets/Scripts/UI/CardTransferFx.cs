@@ -310,7 +310,9 @@ namespace Breach.UI {
   //  carrying the center band, replaces the copies. After the change the band holds 1.2 s and fades in 0.4 s.
   public IEnumerator Turn(int phase,int actor,int attacker,System.Action atPeak=null){
    if(phase<2){ActionTurn++;TurnPick=ActivateFx.Choose(ActionTurn,TurnPick);forced=-1;}
-   var root=Root("턴 전환");root.SetAsLastSibling();Color color=phase==2?new Color(1,.82f,.4f):actor==0?new Color(.22f,.851f,1):new Color(1,.294f,.4f);
+   // 11-28 사용자 "발동효과 중 터미널 창이 턴 시작에 무슨 턴인지 알려주는 창 위에 있는거 같음":
+   //  발동 효과 터미널은 공격 연출 층(game 맨 위)에 그려져 턴 배너를 덮었다. 턴 배너를 game 맨 위로 올린다(카메라 연동 층 밖이라 확대에 안 움직임)
+   var root=Root("턴 전환");var turnHost=GetComponent<BattleController>();if(turnHost&&turnHost.game)root.SetParent(turnHost.game.transform,false);root.SetAsLastSibling();Color color=phase==2?new Color(1,.82f,.4f):actor==0?new Color(.22f,.851f,1):new Color(1,.294f,.4f);
    string title=phase==2?"RESOLVE":phase==0?"ATTACK":"DEFEND";
    string detail=(phase==2?"동시 발동":phase==0?"공격 턴":"방어 턴")+" · "+(phase==2?"양쪽":actor==0?"나":"상대");
    var header=Ui.Box("현재 단계 점등",root,161+544*phase,23,536,36,Color.clear,false,2);

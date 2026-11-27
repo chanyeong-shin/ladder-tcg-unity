@@ -53,7 +53,7 @@ namespace Breach.UI {
    if(signal.SignalTime>=0){Fail("Activation signals left running");yield break;}
    bool changed=false,turnDone=false;var crt=FindFirstObjectByType<CrtOverlay>();StartCoroutine(Run(c.feedback.Turn(1,1,0,()=>changed=true),()=>turnDone=true));
    yield return Await(()=>c.feedback.Phase=="turn"&&c.feedback.Progress>.52f,"VHS peak");if(failed)yield break;yield return Shot("vhs-peak");
-   var split=c.fx.GetComponentsInChildren<RawImage>().Where(x=>x.name=="찢김 띠 0"||x.name=="붉은 겹").ToArray();if(!changed||split.Length<2||split.All(x=>x.color.a<.1f)){Fail("VHS peak or turn callback missing");yield break;}yield return Await(()=>turnDone,"VHS recovery");if(failed)yield break;yield return null;yield return Shot("vhs-recovered");
+   var split=c.game.GetComponentsInChildren<RawImage>().Where(x=>x.name=="찢김 띠 0"||x.name=="붉은 겹").ToArray();if(!changed||split.Length<2||split.All(x=>x.color.a<.1f)){Fail("VHS peak or turn callback missing");yield break;}yield return Await(()=>turnDone,"VHS recovery");if(failed)yield break;yield return null;yield return Shot("vhs-recovered");
    if(crt.Burst!=0){Fail("VHS remained active");yield break;}
    File.WriteAllText(Path.Combine(dir,"week9-result.txt"),"PASS: 6 fixed attack fixtures (hit, partial cancel, wall, full cancel, pierce, offline), camera focus and restore, fixed HUD and headings, horizontal bloom, firewall open-to-lock, activation signals along board-bound circuit bundles, VHS peak callback and recovery");Application.Quit(0);
   }

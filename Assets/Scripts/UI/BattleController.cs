@@ -73,7 +73,7 @@ namespace Breach.UI
             if (deck && deck.IsOpen) { holding = false; deck.HandleKeys(); return; }
             if (Paused) { holding = false; pause.HandleKeys(); return; }
             if (result.activeSelf && sequences.ReplayOpen) { if (Input.GetKeyDown(KeyCode.Escape)) sequences.CloseReplay(); return; }
-            holding = (Input.GetMouseButton(0) && !EffectPicker.PointerOver || Input.GetKey(KeyCode.Space)) && State != null && busy && !dragging && game.activeSelf && !result.activeSelf;
+            holding = (Input.GetMouseButton(0) && !EffectPicker.PointerOver || Input.GetKey(KeyCode.Space)) && State != null && (busy || pendingFx > 0 || ActivateFx.Running) && !dragging && game.activeSelf && !result.activeSelf; // 11-27 사용자 "내 턴에 배속이 안되는거 같은데": 입력이 열린 뒤 이어지는 내 카드 연출(pendingFx)에도 배속
             if (Input.GetKeyDown(KeyCode.Return) && result.activeSelf) { RequestBegin(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && result.activeSelf) { ReturnToTitle(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && bridge) CancelBridge();
@@ -239,7 +239,7 @@ namespace Breach.UI
         // Week 12 item 4: a click no longer selects (CardView.OnPointerClick opens the zoom instead). Select stays as the entry the checks
         // and BeginDrag use for "this card is picked up", followed by Use(target).
         public void Select(int index) { if (!CanInput || index < 0 || index >= cards.Count) return; selected = selected == index ? -1 : index; if (selected >= 0) hold.Show(); else hold.Hide(); LayoutHand(selected); RefreshTargets(); }
-        public void BeginDrag(CardView v) { if (!CanInput) return; if (handTween != null) StopCoroutine(handTween); ClearPreview(); hold.Show(); selected = v.index; if (DrawLocked(v.index)) handFx.LockedDrag(); dragging = true; dragScreenSet = false; dragged = v; v.transform.SetParent(stage, false); v.transform.SetAsLastSibling(); var g = v.gameObject.AddComponent<CanvasGroup>(); g.blocksRaycasts = false; RefreshTargets(); }
+        public void BeginDrag(CardView v) { if (!CanInput) return; if (handTween != null) StopCoroutine(handTween); ClearPreview(); hold.Show(); selected = v.index; if (DrawLocked(v.index)) handFx.LockedDrag(); dragging = true; dragScreenSet = false; dragged = v; v.transform.SetParent(stage, false); v.transform.SetAsLastSibling(); var g = v.GetComponent<CanvasGroup>(); if (!g) g = v.gameObject.AddComponent<CanvasGroup>(); /* 11-27: a card that came back to the hand already has one -> AddComponent returned null (NullReferenceException on the second drag) */ g.blocksRaycasts = false; RefreshTargets(); }
         // --- week 13 drop hint (DropTargetFx) ---------------------------------------------------------------------------------
         // CardView.OnDrag calls AmmoDropTarget with every pointer move (real or a check's PointerEventData), so the last drag
         // position is remembered there; DropTargetFx reads it in stage pixels (y down).
@@ -247,7 +247,7 @@ namespace Breach.UI
         public CardView DraggedView { get { return dragging ? dragged : null; } }
         public int DragIndex { get { return dragging ? selected : -1; } }
         public Vector2 DragStagePoint { get { Vector2 p; RectTransformUtility.ScreenPointToLocalPointInRectangle(stage, dragScreenSet ? dragScreen : (Vector2)Input.mousePosition, null, out p); p.y = -p.y; return p; } }
-        bool DropFxOwns(Card card) { return dragging && (card == Card.Inject || card == Card.ZeroDay || card == Card.Reroute); }
+        bool DropFxOwns(Card card) { return dragging && (card == Card.Inject || card == Card.ZeroDay || card == Card.Reroute || card == Card.Firewall); } // 11-28 사용자 "방화벽 카드도 들면 공격 카드 든것처럼 연출있으면 좋겠음"
         // ------------------------------------------------------------------------------------------------------------------------
         public int AmmoDropTarget(Vector2 screen) { dragScreen = screen; dragScreenSet = true; if (!dragging || selected < 0 || selected >= State.Hands[0].Count) return -1; Card card = State.Hands[0][selected]; if (card != Card.Inject && card != Card.ZeroDay) return -1; Vector2 p; RectTransformUtility.ScreenPointToLocalPointInRectangle(stage, screen, null, out p); p.y = -p.y; if (p.y < 231 || p.y > 832) return -1; int lane = Enumerable.Range(0, 3).OrderBy(i => Mathf.Abs(p.x - LaneX[i])).First(); float width = p.y >= 722 ? 50 : 28; return Mathf.Abs(p.x - LaneX[lane]) <= width && State.CanPlay(0, selected, lane) ? lane : -1; }
         public void Drop(Vector2 screen)
@@ -301,7 +301,7 @@ namespace Breach.UI
         }
         public void Preview(int target, bool rung)
         {
-            if (State == null || busy) return; ClearPreview(); if (selected >= 0 && selected < State.Hands[0].Count) { Card card = State.Hands[0][selected]; if ((card == Card.Reroute) != rung) return; if (card == Card.Buffer || card == Card.Overflow) return; if (!State.CanPlay(0, selected, target)) return; if (card == Card.Firewall) { Ui.Line("차단 채널 미리보기", paths, new Vector2(LaneX[target], 231), new Vector2(LaneX[target], 763), Ui.Gold, 3); return; } }
+            if (State == null || busy) return; ClearPreview(); if (selected >= 0 && selected < State.Hands[0].Count) { Card card = State.Hands[0][selected]; if ((card == Card.Reroute) != rung) return; if (card == Card.Buffer || card == Card.Overflow) return; if (!State.CanPlay(0, selected, target)) return; if (card == Card.Firewall) { if (!dragging) Ui.Line("차단 채널 미리보기", paths, new Vector2(LaneX[target], 231), new Vector2(LaneX[target], 763), Ui.Gold, 3); return; } }
             else if (rung) return;
             // week 13: dragging onto the existing rung removes it; DropTargetFx blinks that rung red, so no gold "place" line there
             if (rung && dragging && target >= 0 && target < 6 && State.Rungs[target / 2] >= 0) return;
@@ -383,7 +383,10 @@ namespace Breach.UI
             yield return feedback.Play(card, 0, origin, size, released, target);
             released();
             Note("나 · " + Cards.Names[(int)card]); Render(false);
-            if (!Cards.Enhanced(card)) yield return feedback.Applied(card, 0, target, connected);
+            // 11-27 사용자 "노란카드 쓴거 숨겨야 되서 낸다음 연출 없는건가? 난 내가 낸 노란카드는 연출 바로 나오면 좋겠는데": 내가 낸 강화 카드도 낸 순간 효과를 보여 준다
+            // (판정은 그대로 동시 발동 때). 그래서 동시 발동의 공개 때는 내 카드 효과를 다시 틀지 않는다(아래 ResolveRound).
+            // 11-28 사용자 "방화벽 현제 내면 잠깐 방화벽 생기는 연출이 있다가 바로 없어짐. 생기는 연출도 발동 페이지 때 나와야 하는거 아님?": 방화벽은 차단이 발동 때 적용되므로 문 생기는 연출도 발동 공개 때(아래 ResolveRound)
+            if (card != Card.Firewall) yield return feedback.Applied(card, 0, target, connected);
             while (dragging || bridge) yield return null;
             yield return DrawFeedback(mineBefore, enemyBefore, true, lost);
             pendingFx = Mathf.Max(0, pendingFx - 1); if (!busy) Render(false); else RefreshTargets();
@@ -411,7 +414,7 @@ namespace Breach.UI
                     var shot = report.Packets.FirstOrDefault(p => p.Owner == s.Owner && p.Start == s.Target);
                     if (shot != null) servers.First(v => v.owner == s.Owner && v.channel == s.Target).Render(report.Before[s.Owner, s.Target], shot.Initial);
                 }
-                if (s.Card != Card.Overflow) yield return feedback.Applied(s.Card, s.Owner, s.Target, true);
+                if (s.Card != Card.Overflow && (s.Owner != 0 || s.Card == Card.Firewall)) yield return feedback.Applied(s.Card, s.Owner, s.Target, true); // 내 강화 카드는 낼 때 이미 보여 줌(방화벽만 여기서)
             }
             RefreshBoard(); yield return DrawFeedback(mineBefore, enemyBefore);
             yield return Flight(report);

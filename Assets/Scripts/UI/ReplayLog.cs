@@ -71,7 +71,8 @@ namespace Breach.UI {
    var events = new List<Ev>(); var board = Board(st);
    for (int p = 0; p < 2; p++) for (int c = 0; c < 3; c++) if (st.P[p, c] > 0) {
     var pk = board.Route(p, c); var s = new Shot { O = p, S = c, End = pk.End, Cells = pk.Cells, Initial = st.P[p, c], Power = st.P[p, c], Pierce = st.Z[p, c], Zero = Mathf.Min(st.ZN[p, c], st.P[p, c]) }; s.Pts = BattleController.Points(pk);
-    if (s.Cells.Any(x => st.Walls[x.Lane])) { s.Blocked = true; s.Power = 0; var e = new Ev { T = "방화벽 · 패킷 소멸", Cap = "서버 앞 차단" }; e.Shots.Add(s); events.Add(e); }
+    if (st.Walls[s.S] || st.Walls[s.End]) { // 11-28: 설치한 채널만(Battle 과 같음)
+     s.Blocked = true; s.Power = 0; var e = new Ev { T = "방화벽 · 패킷 소멸", Cap = "서버 앞 차단" }; e.Shots.Add(s); events.Add(e); }
     shots.Add(s);
    }
    foreach (var a in shots.Where(x => x.O == 0).ToList()) foreach (var bb in shots.Where(x => x.O == 1).ToList()) {
@@ -85,7 +86,7 @@ namespace Breach.UI {
     var ev = new Ev { T = t, Cap = cap }; ev.Shots.Add(a); ev.Shots.Add(bb); events.Add(ev);
    }
    foreach (var s in shots) { if (s.Power <= 0) continue; int tg = 1 - s.O; if (st.H[tg, s.End] <= 0) continue; var ev = new Ev { T = (tg == 0 ? "내" : "상대") + " 서버 " + (s.End + 1) + " · 피해 " + s.Power, Hit = true }; ev.Shots.Add(s); events.Add(ev); }
-   foreach (var s in shots) { if (s.Blocked) { int rc = 1 - s.O; s.Contact = new Vector2(BattleController.LaneX[s.End], (rc == 0 ? 686 : 292) + (rc == 0 ? -26.4f : 26.4f)); } s.Split = s.Contact.HasValue ? Fraction(s.Pts, s.Contact.Value) : 0; s.Len = PathMath.Length(s.Pts); }
+   foreach (var s in shots) { if (s.Blocked) { bool atEnd = st.Walls[s.End] || !st.Walls[s.S]; int rc = atEnd ? 1 - s.O : s.O, ln = atEnd ? s.End : s.S; s.Contact = new Vector2(BattleController.LaneX[ln], (rc == 0 ? 686 : 292) + (rc == 0 ? -26.4f : 26.4f)); } s.Split = s.Contact.HasValue ? Fraction(s.Pts, s.Contact.Value) : 0; s.Len = PathMath.Length(s.Pts); }
    return events;
   }
   static float Fraction(List<Vector2> pts, Vector2 p) { float L = PathMath.Length(pts), done = 0; for (int j = 1; j < pts.Count; j++) { float n = Vector2.Distance(pts[j - 1], pts[j]); if (Mathf.Abs(Vector2.Distance(p, pts[j - 1]) + Vector2.Distance(pts[j], p) - n) < .1f) return (done + Vector2.Distance(p, pts[j - 1])) / Mathf.Max(1, L); done += n; } return 1; }

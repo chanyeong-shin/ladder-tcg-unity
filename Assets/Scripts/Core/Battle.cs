@@ -7,7 +7,7 @@ namespace Breach {
  public static class Cards {
   public static readonly string[] Names={"코드 주입","라우팅 변경","버퍼 적재","제로데이","방화벽","버퍼 오버플로"};
   public static readonly string[] English={"INJECT","REROUTE","BUFFER","ZERO-DAY","FIREWALL","OVERFLOW"};
-  public static readonly string[] Description={"채널 하나를 공격합니다.\n같은 채널에 겹쳐 내면 세기가 더해집니다.","가로줄을 놓거나 부숩니다.\n패킷이 지나는 길이 바뀝니다.","카드를 2장 뽑습니다.","권한 상승 - 코드 주입\n채널 하나를 공격합니다.\n상대 공격과 부딪혀도 지워지지 않고 통과합니다.","권한 상승 - 라우팅 변경\n채널 하나를 이번 턴 막습니다.\n그 길을 지나는 패킷은 양쪽 다 사라집니다.","권한 상승 - 버퍼 적재\n카드를 4장 뽑습니다."};
+  public static readonly string[] Description={"채널 하나를 공격합니다.\n같은 채널에 겹쳐 내면 세기가 더해집니다.","가로줄을 놓거나 부숩니다.\n패킷이 지나는 길이 바뀝니다.","카드를 2장 뽑습니다.","권한 상승 - 코드 주입\n채널 하나를 공격합니다.\n상대 공격과 부딪혀도 지워지지 않고 통과합니다.","권한 상승 - 라우팅 변경\n채널 하나를 이번 턴 막습니다.\n그 채널에서 나가거나 들어오는 패킷은\n양쪽 다 사라집니다.","권한 상승 - 버퍼 적재\n카드를 4장 뽑습니다."};
   public static bool Enhanced(Card c){return c>=Card.ZeroDay;}
  }
  public struct Secret {public int Owner,Target;public Card Card;public Secret(int owner,Card card,int target){Owner=owner;Card=card;Target=target;}}
@@ -74,7 +74,8 @@ namespace Breach {
   public bool Touch(Packet a,Packet b){return a.Cells.Any(c=>b.Cells.Any(d=>c.Row==d.Row&&c.Lane==d.Lane));}
   public Resolution Resolve(){var r=new Resolution{Before=(int[,])Health.Clone()};
    foreach(var s in Hidden){r.Revealed.Add(s);r.Events.Add((s.Owner==0?"나":"상대")+" · "+Cards.Names[(int)s.Card]+" 공개");if(s.Card==Card.ZeroDay){Power[s.Owner,s.Target]++;Zero[s.Owner,s.Target]++;Pierce[s.Owner,s.Target]=true;}else if(s.Card==Card.Firewall)Walls[s.Target]=true;}Hidden.Clear();
-   for(int p=0;p<2;p++)for(int c=0;c<3;c++)if(Power[p,c]>0){var shot=Route(p,c);if(shot.Cells.Any(cell=>Walls[cell.Lane])){shot.Blocked=true;shot.Power=0;r.Events.Add("방화벽 · 패킷 소멸");}r.Packets.Add(shot);}
+   // 11-28 사용자 "방화벽은 설치한곳만 되야하는거 아님?" → 1번(설치한 채널만): 방화벽 채널에서 출발하거나 그 채널 서버에 도착하는 패킷만 양쪽 모두 소멸. 사다리로 지나가기만 하면 통과
+   for(int p=0;p<2;p++)for(int c=0;c<3;c++)if(Power[p,c]>0){var shot=Route(p,c);if(Walls[shot.Start]||Walls[shot.End]){shot.Blocked=true;shot.Power=0;r.Events.Add("방화벽 · 패킷 소멸");}r.Packets.Add(shot);}
    foreach(var a in r.Packets.Where(p=>p.Owner==0))foreach(var b in r.Packets.Where(p=>p.Owner==1)){if(a.Power<=0||b.Power<=0||!Touch(a,b))continue;
     // 일반 몫(Power-Zero)끼리만 작은 쪽만큼 깎인다. 제로데이 몫은 부딪히지 않고 지나가 착탄(방화벽에는 위에서 이미 막힘)
     int na=a.Power-a.Zero,nb=b.Power-b.Zero;

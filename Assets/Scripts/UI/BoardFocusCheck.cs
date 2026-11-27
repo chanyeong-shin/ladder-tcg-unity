@@ -42,15 +42,17 @@ namespace Breach.UI
             if(Mathf.Abs(c.presentation.LastBlockContact.y-318.4f)>.1f&&Mathf.Abs(c.presentation.LastBlockContact.y-659.6f)>.1f){Fail("Hit off gate surface");yield break;}yield return Shot("04-gate-contact");
             yield return Await(()=>c.CanInput,"next turn");if(failed)yield break;
             if(c.presentation.CameraZoom!=1||c.presentation.PeripheralAlpha!=1||c.presentation.ResolutionFocused){Fail("Focus did not restore");yield break;}yield return Shot("05-board-restored");
-            // Rerouted crossing still follows the unchanged channel rule, with a gate
-            // at that route's receiving server, rather than disappearance mid-board.
+            // 11-28 사용자 "방화벽은 설치한곳만 되야하는거 아님?" → 설치한 채널만: CH1 에서 CH2 를 지나 CH3 에 닿는 패킷은
+            // CH2 방화벽에 막히지 않고, CH3(도착 채널) 방화벽에는 받는 서버 문 앞에서 막힌다.
             Fixture();c.State.Rungs[2]=0;c.State.Rungs[0]=1;c.State.Power[0,0]=1;c.State.Hidden.Add(new Secret(1,Card.Firewall,1));
+            var pass=c.State.Resolve();if(pass.Packets.Count!=1||pass.Packets[0].Blocked||pass.Packets[0].End!=2||!pass.Packets[0].Cells.Exists(x=>x.Lane==1)){Fail("Firewall blocked a packet that only passes its channel");yield break;}
+            Fixture();c.State.Rungs[2]=0;c.State.Rungs[0]=1;c.State.Power[0,0]=1;c.State.Hidden.Add(new Secret(1,Card.Firewall,2));
             var report=c.State.Resolve();if(report.Packets.Count!=1||!report.Packets[0].Blocked||report.Packets[0].End!=2){Fail("Rerouted rule fixture changed");yield break;}c.Render();
             bool done=false;StartCoroutine(Run(c.presentation.Play(report),()=>done=true));yield return Await(()=>c.presentation.BlockContactCount==1,"rerouted gate");if(failed)yield break;
             if(Vector2.Distance(c.presentation.LastBlockContact,new Vector2(1262,318.4f))>.1f){Fail("Rerouted gate mismatch");yield break;}yield return Shot("06-rerouted-server-gate");yield return Await(()=>done,"rerouted restore");if(failed)yield break;
             yield return c.presentation.BeginResolution();c.presentation.Cancel();
             if(c.presentation.CameraZoom!=1||c.presentation.PeripheralAlpha!=1){Fail("Cancel left zoom");yield break;}
-            File.WriteAllText(Path.Combine(dir,"board-focus-result.txt"),"PASS: square contacts above tracks/aligned; complete board 8% zoom before activation; HUD dim, fixed hand and safe bounds; both server gates; contact only on gate surface; unchanged routed channel blocking; normal/cancel restore");Application.Quit(0);
+            File.WriteAllText(Path.Combine(dir,"board-focus-result.txt"),"PASS: square contacts above tracks/aligned; complete board 8% zoom before activation; HUD dim, fixed hand and safe bounds; both server gates; contact only on gate surface; firewall only on its own channel (passing route not blocked, arriving route blocked at its gate); normal/cancel restore");Application.Quit(0);
         }
         void Fixture(){for(int r=0;r<3;r++)c.State.RungRiders[r]=-1;c.State.Attacker=0;c.State.Phase=0;c.State.Winner=-1;c.State.Hidden.Clear();c.State.Hands[0].Clear();c.State.Hands[1].Clear();Array.Clear(c.State.Power,0,6);Array.Clear(c.State.Pierce,0,6);Array.Clear(c.State.Walls,0,3);for(int i=0;i<3;i++){c.State.Health[0,i]=c.State.Health[1,i]=1;c.State.Rungs[i]=-1;}typeof(BattleController).GetMethod("CapturePublic",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(c,null);}
         Rect Bounds(RectTransform rect){var corners=new Vector3[4];rect.GetWorldCorners(corners);var a=c.stage.InverseTransformPoint(corners[1]);var b=c.stage.InverseTransformPoint(corners[3]);return new Rect(a.x,-a.y,b.x-a.x,a.y-b.y);}

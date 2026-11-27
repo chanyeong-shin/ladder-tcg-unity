@@ -41,10 +41,10 @@ namespace Breach.UI {
    Fixture(1, 0); c.State.SaveAction(); c.Render(); yield return null; hold.Show(false);
    yield return Await(() => hold.HoldTime >= 1.5f, "hold red"); if (failed) yield break;
    FxClock.Scale = 0; moments.Add("hold-red t=" + hold.HoldTime.ToString("0.000") + " screenAlpha=" + hold.ScreenAlpha.ToString("0.000") + " bandY=" + hold.BandY.ToString("0.0"));
-   if (Mathf.Abs(hold.ScreenAlpha - .22f) > .01f) { Fail("Red turn circuit alpha changed: " + hold.ScreenAlpha); yield break; }
+   if (Mathf.Abs(hold.ScreenAlpha - CardHoldFx.RedTurnAlpha(hold.HoldTime)) > .01f) { Fail("Red turn circuit does not breathe like the blue turn: " + hold.ScreenAlpha); yield break; } // 11-28: 상대 턴도 숨쉬기
    yield return Shot("w12-hold-red-1.5"); FxClock.Scale = 1;
    hold.Hide(); yield return new WaitForSecondsRealtime(.5f);
-   passed.Add("hold pulse (blue turn alpha .46+.16sin), red turn .22, board band y = 39 + (t%3/3) x 896");
+   passed.Add("hold pulse (blue turn alpha .46+.16sin), red turn breathes too (x luminance ratio), board band y = 39 + (t%3/3) x 896");
 
    // item 4: empty socket at a fixed clock
    Fixture(0, 0); c.State.Hands[0].Add(Card.Inject); c.State.Hands[0].Add(Card.Inject); c.State.SaveAction(); c.Render(); yield return new WaitForSecondsRealtime(.5f);
@@ -201,24 +201,24 @@ namespace Breach.UI {
     FxClock.Scale = 0; yield return null; moments.Add("deck t=" + deck.Time.ToString("0.000") + " focus=" + deck.Focus + " panel=" + deck.PanelText);
     yield return Shot("w12-deck-" + td.ToString("0.0")); FxClock.Scale = 1;
     if (td == 2.0f && !deck.PanelText.Contains("제로데이") || td == 2.0f && !deck.PanelText.Contains("4.8%") || td == 2.0f && !deck.PanelText.Contains("9장째 안 나옴")) { Fail("Deck panel: " + deck.PanelText); yield break; }
-    if (td == 3.5f && deck.Focus != 4) { Fail("No automatic step at t=3 (focus " + deck.Focus + ")"); yield break; }
+    if (td == 3.5f && deck.Focus != 3) { Fail("Deck turned by itself (focus " + deck.Focus + ")"); yield break; } // 11-27: 저절로 넘어가지 않음
    }
-   moments.Add("deck-click t=" + deck.Time.ToString("0.000")); deck.ClickAt(new Vector2(320, 500)); if (deck.Focus != 3) { Fail("Click on the left card did not bring it to the middle (" + deck.Focus + ")"); yield break; }
-   deck.ClickAt(new Vector2(1180, 860)); if (deck.Focus != 4) { Fail("Click right of the middle did not turn one step"); yield break; }
-   deck.Wheel(1); if (deck.Focus != 5) { Fail("Wheel did not turn"); yield break; }
+   moments.Add("deck-click t=" + deck.Time.ToString("0.000")); deck.ClickAt(new Vector2(320, 500)); if (deck.Focus != 2) { Fail("Click on the left card did not bring it to the middle (" + deck.Focus + ")"); yield break; }
+   deck.ClickAt(new Vector2(1500, 480)); if (deck.Focus != 2 || !deck.IsOpen) { Fail("Click on the info panel changed the deck view"); yield break; }
+   for (int w = 0; w < 3; w++) deck.Wheel(1); if (deck.Focus != 5) { Fail("Wheel did not turn"); yield break; }
    float last = deck.Time; yield return Await(() => deck.Time > last + .5f, "deck turn"); if (failed) yield break;
    FxClock.Scale = 0; yield return null; moments.Add("deck-turn t=" + deck.Time.ToString("0.000") + " focus=" + deck.Focus + " panel=" + deck.PanelText); yield return Shot("w12-deck-turn"); FxClock.Scale = 1;
    if (!deck.PanelText.Contains("버퍼 오버플로") || !deck.PanelText.Contains("6장째 안 나옴")) { Fail("Deck panel after turning: " + deck.PanelText); yield break; }
-   yield return Await(() => deck.Focus == 0, "deck idle auto step"); if (failed) yield break;
-   float idle = deck.Time - last; moments.Add("deck auto step after " + idle.ToString("0.00") + " s without input");
-   if (idle < 5.9f) { Fail("Auto step before 6 s idle: " + idle); yield break; }
-   deck.Click(new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Right, position = Screen(960, 500) });
-   yield return Await(() => !deck.IsOpen, "deck right-click close"); if (failed) yield break;
+   float hold = deck.Time; yield return Await(() => deck.Time > hold + 7f, "deck idle"); if (failed) yield break;
+   if (deck.Focus != 5) { Fail("Deck turned by itself while idle (focus " + deck.Focus + ")"); yield break; }
+   deck.ClickAt(new Vector2(960, 140)); yield return Await(() => !deck.IsOpen, "deck dim click close"); if (failed) yield break;
    if (!c.CanInput || c.State.Hands[0].Count != 2) { Fail("Deck view changed the battle"); yield break; }
    hot.onClick.Invoke(); if (!deck.IsOpen) { Fail("Deck did not reopen"); yield break; }
-   yield return Await(() => deck.Time >= 1.7f, "deck reopen"); if (failed) yield break; deck.Close(); yield return Await(() => !deck.IsOpen, "deck close 2"); if (failed) yield break;
+   yield return Await(() => deck.Time >= 1.7f, "deck reopen"); if (failed) yield break;
+   deck.Click(new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Right, position = Screen(960, 500) });
+   yield return Await(() => !deck.IsOpen, "deck right-click close"); if (failed) yield break;
    deck.HistoryOverride = null;
-   passed.Add("deck view: deck click opens, ZERO-DAY 4.8% / 9장째, auto step at t=3, side click / right of middle / wheel turn, auto step only after " + idle.ToString("0.0") + " s idle, right-click close, reopen (Esc: key input, not simulated)");
+   passed.Add("deck view: deck click opens, ZERO-DAY 4.8% / 9장째, no automatic turn (7 s idle), card click / wheel turn, info panel click ignored, dim click close, reopen, right-click close (Esc: key input, not simulated)");
 
    // item 9: ESC menu (the pointer is parked off the buttons like the mockup capture)
    Fixture(0, 0); c.State.Hands[0].Add(Card.Inject); c.State.SaveAction(); c.Render(); yield return new WaitForSecondsRealtime(.3f);

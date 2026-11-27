@@ -114,8 +114,11 @@ namespace Breach.UI {
   }
   public void ClickAt(Vector2 p) {
    if (!open || t < 1.6f || closeT >= 0) return;
-   foreach (int k in Enumerable.Range(0, 6).OrderByDescending(Z)) if (shown[k].Contains(p)) { if (k != focus) { Turn(k, true); return; } break; }
-   Turn(focus + (p.x < CX[0] ? -1 : 1), true);
+   // 11-27 사용자 "뽑을 확률 보여주는 창에서 스크롤 하거나 카드를 클릭해야지 넘어가게 하고 다른 어두워진 부분을 클릭하면 다시 닫게 하고 싶어":
+   //  카드를 누르면 그 카드로(가운데 카드는 그대로), 오른쪽 정보 창·아래 최근 기록 줄은 아무 일 없음, 그 밖의 어두운 곳은 닫기
+   foreach (int k in Enumerable.Range(0, 6).OrderByDescending(Z)) if (shown[k].Contains(p)) { if (k != focus) Turn(k, true); return; }
+   if (new Rect(1238, 298, 564, 364).Contains(p) || p.y >= 930) return;
+   Close();
   }
   public void Wheel(int dir) { if (open && t >= 1.6f && closeT < 0) Turn(focus + dir, true); }
 
@@ -127,7 +130,7 @@ namespace Breach.UI {
    float o = Mathf.Clamp01((t - .8f) / .3f) * (1 - shut); Amount = o;
    dim.color = Css.Rgb(1, 3, 6, .6f * o); layerGroup.alpha = o > 0 ? 1 : 0;
    float info = Mathf.Clamp01((t - 1.6f) / .4f);
-   if (t >= next) Turn(focus + 1, false);
+   // 11-27 사용자 "뽑을 확률 보여주는 창에서 스크롤 하거나 카드를 클릭해야지 넘어가게 하고 다른 어두워진 부분을 클릭하면 다시 닫게 하고 싶어": 저절로 넘어가지 않음
    right.alpha = info;
    bool trans = t > 2;
    for (int i = 0; i < 6; i++) {

@@ -20,6 +20,8 @@ namespace Breach.UI {
   public float Amount { get { return show; } }
 
   BattleController host;
+  public static float Breath(float t) { return .46f + .16f * Mathf.Sin(2 * Mathf.PI * t / 2.0f); }
+  public static float RedTurnAlpha(float t) { return Breath(t) * Lum(EventFx.Enemy) / Lum(EventFx.Me); }
   static float Lum(Color c) { return .2126f * c.r + .7152f * c.g + .0722f * c.b; }
   // user 11-22: blue turn -> red circuit, red turn -> blue circuit (background index as in BattleController.Render)
   Color Tint() { if (!host || host.State == null) return EventFx.Me; int bg = host.State.Phase == 2 ? 2 : host.State.Actor == 0 ? 0 : 1; return bg == 0 ? EventFx.Enemy : EventFx.Me; }
@@ -57,9 +59,11 @@ namespace Breach.UI {
    float gain = Lum(EventFx.Me) / Mathf.Max(.05f, Lum(ink));
    // week 12 item 2 (02_redcircuit.js "pulse"): in the blue turn the red circuit breathes, a = .46 + .16 sin(2 pi t / 2.0), Glow .6;
    // the red turn keeps its blue circuit at .22 x gain, Glow .4 (the user's reference)
+   // 11-28 사용자 "상대 팀 카드 발동 연출중 뒤의 회로 숨쉬기 연출이 없음(아군 팀과 동일하면 좋겠는데)": 상대 턴의 파란 회로도 같은 숨쉬기.
+   //  파랑이 빨강보다 밝게 보여(밝기 .73 대 .45) 같은 숨쉬기에 밝기 비율을 곱해 보이는 밝기를 맞춘다(옛 고정값 .22 근처)
    bool blueTurn = ink == EventFx.Enemy;
-   screen.Glow = blueTurn ? .6f : .4f;
-   float screenAlpha = blueTurn ? .46f + .16f * Mathf.Sin(2 * Mathf.PI * HoldTime / 2.0f) : Mathf.Min(1, .22f * gain);
+   screen.Glow = .6f;
+   float screenAlpha = Breath(HoldTime) * (blueTurn ? 1 : Lum(EventFx.Enemy) / Lum(EventFx.Me));
    screen.color = new Color(ink.r, ink.g, ink.b, screenAlpha * e); screen.SetVerticesDirty();
    // week 12 item 3: always-on board circuit .12 x gain (was .073 x gain), Glow 0
    inner.Reveal = 1; inner.color = new Color(ink.r, ink.g, ink.b, Mathf.Max(.12f * gain * e * Mathf.Clamp01(reveal), innerPulse * gain)); inner.SetVerticesDirty();

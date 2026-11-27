@@ -25,7 +25,7 @@ namespace Breach.UI {
   BattleController host; FxPainter under, over; RectTransform overRoot; TextMeshProUGUI deleteText;
   CardView lastCard; float t; bool drawn;
 
-  struct Target { public int i; public bool legal, remove, attack; public Rect hole; public Vector2 center, a, b; }
+  struct Target { public int i; public bool legal, remove, attack, wall; public Rect hole; public Vector2 center, a, b; }
   readonly List<Target> targets = new List<Target>();
 
   public void Initialize(BattleController c) {
@@ -47,10 +47,11 @@ namespace Breach.UI {
    var card = host.DraggedView; int index = host.DragIndex; var st = host.State;
    bool on = card && st != null && index >= 0 && index < st.Hands[0].Count && host.game.activeSelf;
    Card kind = on ? st.Hands[0][index] : Card.Buffer;
-   bool attack = kind == Card.Inject || kind == Card.ZeroDay, rung = kind == Card.Reroute;
-   if (!on || !(attack || rung)) { Hide(); lastCard = null; return; }
+   // 11-28 사용자 "방화벽 카드도 들면 공격 카드 든것처럼 연출있으면 좋겠음": 방화벽도 채널 기둥 구멍·회로선, 올리면 차단선과 양쪽 서버 문 자리
+   bool wall = kind == Card.Firewall, attack = kind == Card.Inject || kind == Card.ZeroDay, rung = kind == Card.Reroute;
+   if (!on || !(attack || rung || wall)) { Hide(); lastCard = null; return; }
    if (card != lastCard) { lastCard = card; t = 0; } else t += Time.unscaledDeltaTime;
-   Draw(st, index, attack, card);
+   Draw(st, index, attack, wall, card);
   }
 
   void Hide() {
@@ -58,19 +59,21 @@ namespace Breach.UI {
    under.Begin(); under.End(); over.Begin(); over.End(); deleteText.gameObject.SetActive(false);
   }
 
-  void Draw(Battle st, int index, bool attack, CardView card) {
+  void Draw(Battle st, int index, bool attack, bool wall, CardView card) {
    drawn = true; float lift = Mathf.Clamp01(t / .25f);
    Vector2 p = host.DragStagePoint; Rect board = BattleController.BoardRect; bool overBoard = board.Contains(p);
    Rect cardRect = StageRect((RectTransform)card.transform);
    // targets (same geometry as Drop / AmmoDropTarget)
    targets.Clear();
    if (attack) for (int i = 0; i < 3; i++) { float cx = BattleController.LaneX[i]; targets.Add(new Target { i = i, attack = true, legal = st.CanPlay(0, index, i), hole = new Rect(cx - 34, 175, 68, 640), center = new Vector2(cx, ServerY) }); }
+   else if (wall) for (int i = 0; i < 3; i++) { float cx = BattleController.LaneX[i]; targets.Add(new Target { i = i, wall = true, legal = st.CanPlay(0, index, i), hole = new Rect(cx - 34, 175, 68, 640), center = new Vector2(cx, 487), a = CombatPresentation.FirewallPoint(1, i), b = CombatPresentation.FirewallPoint(0, i) }); }
    else for (int s = 0; s < 6; s++) {
     float x = BattleController.LaneX[s % 2], y = BattleController.RowY[s / 2]; bool legal = st.CanPlay(0, index, s);
     targets.Add(new Target { i = s, legal = legal, remove = legal && st.Rungs[s / 2] == s % 2, hole = new Rect(x + 10, y - 42, 260, 84), center = new Vector2(x + 140, y), a = new Vector2(x, y), b = new Vector2(BattleController.LaneX[s % 2 + 1], y) });
    }
    int hover = -1;
    if (attack) { if (p.y >= 231 && p.y <= 832) { int lane = 0; for (int i = 1; i < 3; i++) if (Mathf.Abs(p.x - BattleController.LaneX[i]) < Mathf.Abs(p.x - BattleController.LaneX[lane])) lane = i; if (Mathf.Abs(p.x - BattleController.LaneX[lane]) <= (p.y >= 722 ? 50 : 28)) hover = lane; } }
+   else if (wall) { if (p.y >= 175 && p.y <= 815) { int lane = 0; for (int i = 1; i < 3; i++) if (Mathf.Abs(p.x - BattleController.LaneX[i]) < Mathf.Abs(p.x - BattleController.LaneX[lane])) lane = i; if (Mathf.Abs(p.x - BattleController.LaneX[lane]) <= 40) hover = lane; } }
    else for (int s = 0; s < 6; s++) if (targets[s].hole.Contains(p)) { hover = s; break; }
    Target? hv = hover >= 0 ? targets[hover] : (Target?)null;
 
@@ -84,7 +87,7 @@ namespace Breach.UI {
    int k = 0; float fl = Mathf.FloorToInt(t * 12) % 2 == 1 ? 1 : .35f;
    foreach (var tg in targets) {
     if (!tg.legal) continue;
-    Color col = tg.attack ? Cyan : tg.remove ? Red : Gold; bool h = hover == tg.i, isN = near == tg.i; var b = tg.hole;
+    Color col = tg.attack ? Cyan : tg.wall ? Gold : tg.remove ? Red : Gold; bool h = hover == tg.i, isN = near == tg.i; var b = tg.hole;
     // 2. hole outline
     under.StrokeRoundRect(b.x, b.y, b.width, b.height, 12, h ? 2.5f : 1.2f, h ? A(White, .9f) : A(col, .4f * lift));
     if (h) under.FillRoundRect(b.x, b.y, b.width, b.height, 12, A(col, .1f));
@@ -104,6 +107,11 @@ namespace Breach.UI {
       // the public route (same as BattleController.Preview, drawn again above the dark layer)
       under.Stroke(BattleController.Points(st.Route(0, tg.i)), 3, A(Gold, .85f), true);
      }
+    } else if (tg.wall) {
+     // 차단선(채널 따라 금색, 올리면 굵게 깜빡임 없이) + 양쪽 서버 문 자리(가로 막대 70 px, 올리면 빛)
+     Vector2 top = new Vector2(tg.center.x, 231), bottom = new Vector2(tg.center.x, 763);
+     if (h) under.Stroke(new[] { top, bottom }, 4, A(Gold, .9f), true); else Dashed(under, top, bottom, 8, 8, 2, A(Gold, .4f * lift));
+     foreach (var g in new[] { tg.a, tg.b }) { under.Stroke(new[] { g + new Vector2(-35, 0), g + new Vector2(35, 0) }, h ? 6 : 3, A(Gold, (h ? 1 : .45f) * lift), true); if (h) { under.Glow(g, 40, Gold, .8f); under.FillRect(g.x - 4, g.y - 4, 8, 8, A(White, .9f)); } }
     } else if (tg.remove) {
      if (h) under.Stroke(new[] { tg.a, tg.b }, 6, A(Red, .9f * fl), true);
      else Dashed(under, tg.a, tg.b, 6, 6, 2, A(Red, .5f * lift));

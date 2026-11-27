@@ -16,6 +16,6 @@ namespace Breach.UI {
   void Update(){if(!dragging)return;lift=Mathf.MoveTowards(lift,1.6f,Time.unscaledDeltaTime*4);bool onBoard=pointer!=null&&controller.OverBoard(pointer.position);over=Mathf.MoveTowards(over,onBoard?1:0,Time.unscaledDeltaTime/.12f);transform.localScale=Vector3.one*Mathf.Lerp(lift,1-.4f*1,over);var group=GetComponent<CanvasGroup>();if(group)group.alpha=1-.25f*over;Place();}
   public float DragOver{get{return over;}}
   void Place(){if(pointer==null)return;Vector2 p;RectTransformUtility.ScreenPointToLocalPointInRectangle(controller.stage,pointer.position,pointer.pressEventCamera,out p);((RectTransform)transform).anchoredPosition=p-grabLocal*transform.localScale.x;}
-  public void OnEndDrag(PointerEventData e){if(!dragging)return;dragging=false;previewTarget=-1;over=0;var group=GetComponent<CanvasGroup>();if(group)group.alpha=1;controller.Drop(e.position);}
+  public void OnEndDrag(PointerEventData e){if(!dragging)return;dragging=false;previewTarget=-1;over=0;var group=GetComponent<CanvasGroup>();if(group){group.alpha=1;group.blocksRaycasts=true;}controller.Drop(e.position);}
  }
 }

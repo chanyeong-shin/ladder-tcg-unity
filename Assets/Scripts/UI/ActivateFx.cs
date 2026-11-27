@@ -96,6 +96,9 @@ namespace Breach.UI {
   // the running effect's clock (checks read it while FxClock.Scale is 0)
   public static float LastU { get; private set; } = -1;
   public static int LastPick { get; private set; } = -1;
+  // 11-28 사용자 "터미널 발동 효과에 배속이 안되는 부분이있음": 효과는 카드 처리와 따로 돌아 처리가 먼저 끝나면 배속 조건이 꺼졌다. 도는 동안 배속을 받게 알린다
+  static int ActiveFrame = -10;
+  public static bool Running { get { return Time.frameCount - ActiveFrame <= 1; } }
   // Week 12 signature (load along the packet route) — kept for callers that do not build a scene.
   public static IEnumerator Run(int pick, RectTransform root, RectTransform topRoot, List<Vector2> route, int owner, int endLane, Texture boardShot, TMP_FontAsset font, Func<float> delta, Action<float> progress = null) {
    int startLane = route != null && route.Count > 0 ? LaneOf(route[0].x) : 0;
@@ -120,7 +123,7 @@ namespace Breach.UI {
    if (pick == Lockon) LockInit(x);
    for (float u = 0; u <= Length; u += delta()) {
     if (!root || !topRoot) yield break;
-    progress?.Invoke(u / Length); LastU = u; LastPick = pick;
+    progress?.Invoke(u / Length); LastU = u; LastPick = pick; ActiveFrame = Time.frameCount;
     Frame(x, pick, u);
     yield return null;
    }

@@ -39,7 +39,8 @@ namespace Breach.UI {
 
   public void Initialize(BattleController controller) {
    c = controller;
-   var root = Ui.Rect("발동 효과 고르기", c.game.transform, Panel.x, Panel.y, Panel.width, Panel.height); root.SetAsLastSibling();
+   // 11-27 사용자 "카드 확대 마우스 댔을때 이펙트 선택창이 앞에 있는데 뒤로 보낼래": game 맨 앞 → stage 안. 나중에 여는 카드 확대·덱·일시정지 창이 위를 덮는다
+   var root = Ui.Rect("발동 효과 고르기", c.stage, Panel.x, Panel.y, Panel.width, Panel.height); root.SetAsLastSibling();
    group = root.gameObject.AddComponent<CanvasGroup>();
    var head = Ui.Text("발동 효과 제목", root, 2, 0, 396, 16, "발동 효과 / EFFECT", c.font, 13, Grey); head.alignment = TextAlignmentOptions.TopLeft; head.textWrappingMode = TextWrappingModes.NoWrap; head.characterSpacing = 2 * 100 / 13f;
    const float top = 18, w = 62, h = 78, gap = 5.6f, mw = 58, mh = 54; float k = Mathf.Min(mw / 800f, mh / 716f);
@@ -81,6 +82,8 @@ namespace Breach.UI {
   }
   void Update() {
    if (!c) return;
+   // stage 안으로 옮긴 뒤 타이틀 화면에도 보여서, 게임 화면일 때만 켠다
+   if (group) { bool on = c.game.activeSelf && !(c.title && c.title.activeSelf); if (group.gameObject.activeSelf != on) group.gameObject.SetActive(on); if (!on) return; }
    if (group && c.presentation) group.alpha = c.presentation.PeripheralAlpha; // dims with the other side UI during the resolve
    Refresh(); bool any = false;
    foreach (var t in tiles) {
